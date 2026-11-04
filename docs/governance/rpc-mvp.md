@@ -2,6 +2,8 @@
 
 ## Direction
 
+**Progressive enhancement, 2026-11-04:** the user subsequently supplied a governance indexer and authorized automatic discovery/history when it is available. This replaces mandatory manual entry as the default discovery experience when configured. RPC state/eligibility and manual receipt import remain independent fallbacks. See [coverage, API integration and local verification](indexer.md). The original RPC-only baseline below still defines behavior when no indexer is configured.
+
 Adapt this application to the deployed Intuition governance route, with minimal infrastructure. Proposal discovery is based on transaction hashes supplied by users. Fetch their receipts through the configured chain's RPC, decode relevant events, and persist those events in local storage. No indexer, subgraph, database, or application backend is required for governance discovery or current-state reads.
 
 Source: the user's direction on 2026-11-04 and the [frontend project](https://linear.app/0xintuition/project/vetrust-onchain-governance-frontendapplication-1367e601c391/overview), including all 20 issues and six milestones read through Intuition Studio. Implementation stays on the existing `development` branch. This document specifies the overall intended behavior. The [testnet implementation record](testnet.md) distinguishes what is now implemented and verified from remaining scope; see also [the issue map and implementation order](project-plan.md).

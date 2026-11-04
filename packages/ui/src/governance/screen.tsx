@@ -1,3 +1,5 @@
+import { IndexerProvider, IndexerStatus, IndexedActivity, useIndexedProposals } from "./indexer-ui";
+import { mergeProposalIds, MAX_INDEX_PAGES } from "./indexer";
 import { GovernanceHeader, Explorer, ErrorMessage, short, message, units, date } from "./shared";
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/router";
@@ -24,6 +26,15 @@ import {
 const proposalKey = (id: string) => ["governance-proposal", ...governanceKey, id];
 
 export default function GovernanceScreen() {
+  return (
+    <IndexerProvider>
+      <GovernanceContent />
+    </IndexerProvider>
+  );
+}
+function GovernanceContent() {
+  const indexed = useIndexedProposals();
+  const indexedProposals = useMemo(() => indexed.data?.pages.flatMap((p) => p.items) ?? [], [indexed.data]);
   const router = useRouter();
   const queryClient = useQueryClient();
   const [receipts, setReceipts] = useState<StoredReceipt[]>([]);
@@ -91,13 +102,7 @@ export default function GovernanceScreen() {
         ),
     [history.data]
   );
-  const ids = useMemo(
-    () =>
-      [...new Set(events.flatMap((e) => (e.proposalId ? [e.proposalId] : [])))].sort((a, b) =>
-        BigInt(a) > BigInt(b) ? -1 : 1
-      ),
-    [events]
-  );
+  const ids = useMemo(() => mergeProposalIds(indexedProposals, events), [indexedProposals, events]);
   const selected =
     typeof router.query.proposal === "string" && /^\d{1,78}$/.test(router.query.proposal)
       ? router.query.proposal
@@ -208,6 +213,8 @@ export default function GovernanceScreen() {
             Refresh from chain
           </button>
         </div>
+        <IndexerStatus />
+        <ErrorMessage error={indexed.error} />
         <ErrorMessage error={deploymentQuery.error} />
         {deploymentQuery.isPending && <p role="status">Checking the governance contracts…</p>}
         {selected ? (
@@ -219,60 +226,70 @@ export default function GovernanceScreen() {
               key={selected}
               id={selected}
               events={events}
+              indexedCreator={indexedProposals.find((p) => p.proposalId === selected)?.creator}
               enabled={deploymentQuery.isSuccess && !deploymentQuery.isFetching}
               onConfirmed={onConfirmed}
             />
           </>
         ) : (
           <>
-            <section className="app-surface gov-import" aria-labelledby="import-title">
-              <h2 id="import-title">Import a transaction</h2>
-              <p>Paste a transaction hash to load its governance events. History is saved only in this browser.</p>
-              <form onSubmit={onSubmit}>
-                <label htmlFor="transaction-hash">Transaction hash</label>
-                <div className="gov-input-row">
-                  <input
-                    id="transaction-hash"
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    placeholder="0x…"
-                    autoComplete="off"
-                    spellCheck={false}
-                    aria-describedby="import-help"
-                    disabled={busy}
-                  />
-                  <button
-                    className="gov-primary"
-                    type="submit"
-                    disabled={busy || !input.trim() || !deploymentQuery.isSuccess}
-                    aria-busy={busy}
-                  >
-                    Import transaction
-                  </button>
-                </div>
-              </form>
-              <p id="import-help">
-                Only receipts from this deployment are accepted. Importing does not ask your wallet to sign.
-              </p>
-              <button
-                disabled={busy || !deploymentQuery.isSuccess}
-                onClick={() => void importHashes(fixtureTransactions)}
-              >
-                Import testnet fixtures
-              </button>
-              <ErrorMessage error={importError} />
-              <p role="status" aria-live="polite">
-                {busy ? "Working with the testnet RPC…" : notice}
-              </p>
-            </section>
+            <details className="gov-manual-import">
+              <summary>Import a transaction manually</summary>
+              <section className="gov-import" aria-labelledby="import-title">
+                <h2 id="import-title">Import a transaction</h2>
+                <p>Paste a transaction hash to load its governance events. History is saved only in this browser.</p>
+                <form onSubmit={onSubmit}>
+                  <label htmlFor="transaction-hash">Transaction hash</label>
+                  <div className="gov-input-row">
+                    <input
+                      id="transaction-hash"
+                      value={input}
+                      onChange={(e) => setInput(e.target.value)}
+                      placeholder="0x…"
+                      autoComplete="off"
+                      spellCheck={false}
+                      aria-describedby="import-help"
+                      disabled={busy}
+                    />
+                    <button
+                      className="gov-primary"
+                      type="submit"
+                      disabled={busy || !input.trim() || !deploymentQuery.isSuccess}
+                      aria-busy={busy}
+                    >
+                      Import transaction
+                    </button>
+                  </div>
+                </form>
+                <p id="import-help">
+                  Only receipts from this deployment are accepted. Importing does not ask your wallet to sign.
+                </p>
+                <button
+                  disabled={busy || !deploymentQuery.isSuccess}
+                  onClick={() => void importHashes(fixtureTransactions)}
+                >
+                  Import testnet fixtures
+                </button>
+                <ErrorMessage error={importError} />
+                <p role="status" aria-live="polite">
+                  {busy ? "Working with the testnet RPC…" : notice}
+                </p>
+              </section>
+            </details>
             <section className="gov-proposals" aria-labelledby="proposals-title">
-              <h2 id="proposals-title">Imported proposals</h2>
-              <p>Veto totals and status come from the contracts. Imported event history may be incomplete.</p>
+              <h2 id="proposals-title">Proposals</h2>
+              <p>
+                Automatically discovered proposals and local imports appear together. Veto totals and status come from
+                the contracts.
+              </p>
               {!ready || history.isFetching || list.isFetching ? (
                 <p role="status">Loading and verifying proposal data…</p>
               ) : null}
-              {ready && !history.isFetching && !ids.length && (
-                <p>No proposals imported in this browser. Import a transaction or load the testnet fixtures above.</p>
+              {ready && !history.isFetching && !indexed.isFetching && !ids.length && (
+                <p>
+                  No proposals found in the loaded history. You can import a transaction or load the testnet fixtures
+                  using manual import.
+                </p>
               )}
               <div className="app-surface gov-rows">
                 {visibleIds.map((id) => {
@@ -306,7 +323,22 @@ export default function GovernanceScreen() {
                   </button>
                 </nav>
               )}
+              {indexed.hasNextPage && (
+                <button disabled={indexed.isFetching} onClick={() => void indexed.fetchNextPage()}>
+                  Load older proposals
+                </button>
+              )}
+              {indexed.data?.pages.length === MAX_INDEX_PAGES && indexed.data.pages[MAX_INDEX_PAGES - 1].nextCursor && (
+                <p>
+                  Showing the first 250 indexed proposals. Older proposals can still be opened by ID or imported by
+                  transaction hash.
+                </p>
+              )}
             </section>
+            <details className="gov-network-activity">
+              <summary>Recent governance and contract activity</summary>
+              <IndexedActivity />
+            </details>
           </>
         )}
         {warnings.map((w, i) => (
@@ -367,7 +399,7 @@ export default function GovernanceScreen() {
         )}
       </main>
       <footer className="gov-footer">
-        <p>Intuition testnet. Local history is not a complete proposal registry.</p>
+        <p>Intuition testnet. Indexed and local history can be incomplete; contract reads determine current state.</p>
         <a
           href="https://github.com/0xIntuition/intuition-contracts-v2-governance"
           target="_blank"
@@ -385,10 +417,12 @@ function ProposalDetail({
   id,
   events,
   enabled,
+  indexedCreator,
   onConfirmed,
 }: {
   id: string;
   events: Event[];
+  indexedCreator?: string;
   enabled: boolean;
   onConfirmed: (hash: Hex) => Promise<void>;
 }) {
@@ -473,6 +507,7 @@ function ProposalDetail({
   if (!proposal.data) return <ErrorMessage error={proposal.error} />;
   const p = proposal.data;
   const creator = events.find((e) => e.name === "ProposalCreated" && e.proposalId === id);
+  const creatorAddress = creator?.creator ?? indexedCreator;
   const ownEvents = events.filter((e) => e.proposalId === id);
   const reference = metadataReference(p.result[4]);
   const writable =
@@ -486,16 +521,16 @@ function ProposalDetail({
       <p className="gov-hash">{id}</p>
       <ErrorMessage error={proposal.error} />
       <dl className="gov-facts">
-        <dt>Proposed by</dt>
+        <dt>Proposed by{!creator && indexedCreator ? " (indexed)" : ""}</dt>
         <dd>
-          {creator?.creator ? (
-            <Explorer value={creator.creator}>
-              {isAddressEqual(creator.creator as Address, deployment.manager)
+          {creatorAddress ? (
+            <Explorer value={creatorAddress}>
+              {isAddressEqual(creatorAddress as Address, deployment.manager)
                 ? "Manager (testnet EOA)"
-                : short(creator.creator)}
+                : short(creatorAddress)}
             </Explorer>
           ) : (
-            "Creation receipt not imported"
+            "Creator unavailable in loaded history"
           )}
         </dd>
         <dt>Veto window ends</dt>
@@ -636,8 +671,9 @@ function ProposalDetail({
         )}
         <ErrorMessage error={error} />
       </section>
+      <IndexedActivity filter={{ proposalId: id }} title="Proposal activity" />
       <section>
-        <h2>Imported activity</h2>
+        <h2>Local receipt activity</h2>
         <p>This is only the activity imported into this browser, not a complete voter list.</p>
         {ownEvents.length ? (
           ownEvents.map((event) => (
@@ -738,6 +774,13 @@ function ActionView({
                     ? `Timelock ready for the next block. The proposal veto period must also have ended (${date(vetoEnd)}).`
                     : `Timelock waiting. Earliest execution: ${date(eta > vetoEnd ? eta : vetoEnd)}.`}
           </p>
+          <details>
+            <summary>Timelock history</summary>
+            <IndexedActivity
+              filter={{ operationId: decoded.operationId, contract: action.to }}
+              title="Operation activity"
+            />
+          </details>
           <details>
             <summary>Operation ID</summary>
             <p className="gov-hash">{decoded.operationId}</p>

@@ -1,13 +1,13 @@
 # Intuition governance UI
 
-The application connects to the November 2026 Intuition testnet governance deployment. Import transaction hashes to discover proposals, retain receipt history in this browser, and read current state directly over RPC. No indexer, subgraph, database, pinning credential, or application backend is needed.
+The application connects to the November 2026 Intuition testnet governance deployment. An optional governance indexer discovers proposals and event history automatically. Current state and transaction eligibility come directly from RPC. Manual receipt import and browser-local history remain available when the indexer is absent or unavailable; no backend is required for that fallback.
 
 ```sh
 pnpm install --frozen-lockfile
 pnpm --filter dao-ui dev
 ```
 
-Open the local development URL and select **Import testnet fixtures**. The four deployed proposals exercise executed, vetoed, active, and executable states. Importing only reads chain data; veto and execution require a connected testnet wallet and explicit confirmation.
+In development, the UI connects to the local indexer at `http://127.0.0.1:42069` when available. See [indexer integration and local startup](docs/governance/indexer.md). Without it, expand **Import a transaction manually** and select **Import testnet fixtures**. The four deployed proposals exercise executed, vetoed, active, and executable states. Discovery/import only reads data; veto and execution require a connected testnet wallet and explicit confirmation.
 
 Open **Setup & lock TRUST** (`/setup`) to inspect the configured contracts, including MultiVault and TrustBonding, and create a veTRUST lock. The form guides a funded testnet wallet through wrapping TRUST, approving the entered amount, and locking it. Existing locks can receive additions; expired locks can be withdrawn as wrapped TRUST.
 

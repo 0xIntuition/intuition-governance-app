@@ -2,6 +2,8 @@
 
 Implemented on the existing `development` branch, 2026-11-04. This is the first usable testnet slice of the [project plan](project-plan.md), not completion of all project milestones.
 
+Follow-up: [optional automatic discovery and indexed activity](indexer.md) now augment these RPC flows. Manual receipt import remains available as a fallback; indexed history does not replace fresh contract checks.
+
 ## Deployment
 
 The source manifest is `intuition-contracts-v2-governance/deployments.md` in the sibling checkout supplied by the user. Its current `config/13579.json` and generated `abis/OptimisticTokenVotingPlugin.ts` identify governance source commit `8434b5ce3a232364392c4bc3f5efbfdeefcc6d57`. The plugin ABI is bundled in `packages/ui/src/governance/plugin-abi.ts`; the application does not require the sibling checkout at runtime.

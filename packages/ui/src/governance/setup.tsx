@@ -1,3 +1,4 @@
+import { indexerUrl } from "./indexer";
 import Head from "next/head";
 import Link from "next/link";
 import { Fragment, useRef, useState } from "react";
@@ -61,6 +62,8 @@ export default function SetupPage() {
               <dd>{deployment.chainId}</dd>
               <dt>RPC endpoint</dt>
               <dd className="gov-hash">{deployment.rpcUrl}</dd>
+              <dt>Discovery API</dt>
+              <dd className="gov-hash">{indexerUrl || "Disabled; RPC and manual import remain available"}</dd>
               <dt>Native currency</dt>
               <dd>tTRUST · 18 decimals</dd>
               <dt>Explorer</dt>
