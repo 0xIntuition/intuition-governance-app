@@ -60,7 +60,7 @@ export function Wallet() {
   );
 }
 
-export function GovernanceHeader({ page }: { page: "proposals" | "setup" }) {
+export function GovernanceHeader({ page }: { page: "proposals" | "setup" | "create" }) {
   return (
     <header className="gov-header">
       <Link className="gov-brand" href="/">
@@ -69,6 +69,9 @@ export function GovernanceHeader({ page }: { page: "proposals" | "setup" }) {
       <nav className="gov-nav" aria-label="Main navigation">
         <Link href="/" aria-current={page === "proposals" ? "page" : undefined}>
           Proposals
+        </Link>
+        <Link href="/proposals/new" aria-current={page === "create" ? "page" : undefined}>
+          New proposal
         </Link>
         <Link href="/setup" aria-current={page === "setup" ? "page" : undefined}>
           Setup & lock TRUST

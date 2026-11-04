@@ -11,7 +11,7 @@ import {
   type Hex,
 } from "viem";
 import { deployment, intuitionTestnet } from "./deployment";
-import { pluginAbi, proxyAdminAbi, timelockAbi, votesAbi } from "./contracts";
+import { daoPermissionsAbi, pluginAbi, proposerPermissionId, proxyAdminAbi, timelockAbi, votesAbi } from "./contracts";
 import { normalizeReceipt, parseTransactionHash, type StoredReceipt } from "./events";
 
 export const governanceClient = createPublicClient({
@@ -154,6 +154,19 @@ export async function readVotingPower(proposal: Proposal, account: Address) {
 
 export type Action = { to: Address; value: bigint; data: Hex };
 export function decodeAction(action: Action) {
+  if (isAddressEqual(action.to, deployment.dao) && action.value === 0n) {
+    try {
+      const decoded = decodeFunctionData({ abi: daoPermissionsAbi, data: action.data });
+      if (
+        decoded.functionName === "grant" &&
+        isAddressEqual(decoded.args[0], deployment.plugin) &&
+        decoded.args[2] === proposerPermissionId
+      )
+        return { name: `Grant proposer access to ${decoded.args[1]}` };
+    } catch {
+      /* Preserve unrecognized DAO actions as raw calldata. */
+    }
+  }
   if (
     isAddressEqual(action.to, deployment.upgradesTimelock) ||
     isAddressEqual(action.to, deployment.parametersTimelock)

@@ -78,6 +78,14 @@ New deposits only affect future proposal snapshots. They do not give a new teste
 - Store up to 100 receipts in versioned keys scoped to chain/DAO/plugin. Duplicate imports are idempotent; different tabs do not overwrite a shared receipt array. Remove or clear only this deployment's history.
 - Display known proposals with bounded pagination and live state. Details include snapshot voting power, correctly rounded veto threshold, imported activity, raw calldata and supported timelock/proxy upgrade decoding.
 - Connect a wallet, switch to the pinned testnet, review and simulate veto/execution, then submit through the wallet. On confirmation, independently save the receipt and refresh chain data. Failed history persistence is reported separately from successful confirmation. Cancelled/replaced calls are not presented as successful governance actions.
+- Open **New proposal** (`/proposals/new`) to create a no-action test proposal, add a proposer, or submit up to ten ordered contract calls. The form checks the connected wallet's onchain proposer permission for the exact calldata, reads the minimum veto window, and simulates before requesting a signature. Every action must succeed; native action values come from the DAO at execution. Metadata is an optional existing `ipfs://` or `https://` URI. Combined calldata is limited to 64 KiB to fit local receipt storage.
+- Confirmed creation uses the mined `ProposalCreated` event ID, saves its receipt locally, and links to the proposal. A confirmation timeout keeps the transaction hash and offers a confirmation retry instead of another submission. A storage error preserves the success message and proposal link.
+
+### Adding test proposers
+
+The deployed manager wallet has `PROPOSER_PERMISSION`, but it does **not** hold DAO `ROOT_PERMISSION`. The DAO itself holds root permission. Being the deployer does not bypass this arrangement; these permissions were verified through RPC on 2026-11-04.
+
+Connect an existing proposer, choose **New proposal → Add proposer**, enter the other wallet, and review the proposal. Its single action calls `DAO.grant(plugin, wallet, PROPOSER_PERMISSION_ID)` with zero native value. After the veto window (currently at least 120 seconds), open the proposal and execute it if eligible. The recipient can then connect and propose. This grants neither DAO root access nor a timelock scheduling role. Locking TRUST is separate and is needed for voting power; lock before creating the proposal whose snapshot the tester will vote on.
 
 No deployment-to-head scans, indexer, external ABI lookup, metadata download, server-side cache, or pinning endpoint is used by the active application. The old `/api/ipfs` and `/api/pin` handlers have been removed. Unsupported plugin routes do not expose legacy functionality.
 
@@ -87,7 +95,7 @@ Local history is partial, browser-specific and origin-specific. A second browser
 
 Fixtures A–C refer to unpinned IPFS metadata; D has empty metadata. The interface deliberately shows unavailable descriptions and the onchain reference. RPC cannot reconstruct documents that were never published. Action bytes and current contract reads remain available.
 
-This slice supports only the supplied testnet deployment. Mainnet/anvil selection, proposal creation, manager/Safe export, rich metadata preparation and publishing, broader ABI decoding, full timelock evidence presentation, public hosting and legacy dependency cleanup remain in the project backlog. The manager EOA here must not be represented as a Safe. Legacy builder code is retained for subsequent reuse but is not routed into this interface.
+This slice supports only the supplied testnet deployment. Mainnet/anvil selection, manager/Safe export, rich metadata preparation and publishing, broader ABI decoding, full timelock evidence presentation, public hosting and legacy dependency cleanup remain in the project backlog. The manager EOA here must not be represented as a Safe. Legacy builder code is retained for subsequent reuse but is not routed into this interface.
 
 ## Validation
 
@@ -109,3 +117,5 @@ Setup follow-up on the same date: 266 unit tests passed, with two live checks sk
 Manual UI and wallet review remains user-owned: import fixtures, reload, open proposal C/D, compare the visible actions, and check wallet veto/execution with the intended test account. Browser QA and signed transactions were not performed during implementation.
 
 For the new form, manually open `/setup`, connect a funded testnet wallet, enter a small amount and 30-day duration, then confirm wrap, approval and lock in sequence. Check the resulting lock and voting power, and use a newly created proposal to test that wallet's veto eligibility. A rejected wallet step should preserve the input and earlier confirmed steps.
+
+Proposal creation follow-up: construction and preflight tests cover exact permission calldata, stale permissions/settings, invalid addresses and wildcard grants, duration/value precision, receipt-size bounds and pending-block simulation. Component tests cover unauthorized/wrong-chain wallets, account changes during preparation, signature rejection, confirmation retries, mismatched/reverted transactions, calldata casing and storage failure after success. A read-only `eth_call` of a no-action proposal succeeded from the manager account. No proposal was broadcast during verification. For manual review, create a test proposal, then follow the Add proposer flow above with a second wallet.
