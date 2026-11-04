@@ -1,5 +1,10 @@
-import { parseAbi } from "viem";
+import { keccak256, parseAbi, toHex } from "viem";
 export { OptimisticTokenVotingPluginAbi as pluginAbi } from "./plugin-abi";
+export const proposerPermissionId = keccak256(toHex("PROPOSER_PERMISSION"));
+export const daoPermissionsAbi = parseAbi([
+  "function hasPermission(address where,address who,bytes32 permissionId,bytes data) view returns (bool)",
+  "function grant(address where,address who,bytes32 permissionId)",
+]);
 export const votesAbi = parseAbi([
   "function trustBonding() view returns (address)",
   "function getVotes(address) view returns (uint256)",

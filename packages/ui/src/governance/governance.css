@@ -84,7 +84,7 @@
   background: hsl(var(--accent));
   border-color: hsl(var(--accent));
 }
-.governance :is(button, a, input, summary):focus-visible {
+.governance :is(button, a, input, select, textarea, summary):focus-visible {
   outline: 3px solid hsl(var(--accent));
   outline-offset: 4px;
 }
@@ -94,7 +94,7 @@
   padding-block: 0.6rem;
   font-weight: 600;
 }
-.governance input {
+.governance :is(input, select, textarea) {
   min-width: 0;
   width: 100%;
   min-height: 48px;
@@ -105,6 +105,19 @@
   background: hsl(var(--card));
   font: inherit;
   font-size: 1rem;
+}
+.gov-create-fields {
+  min-width: 0;
+  border: 0;
+  padding: 0;
+  margin-block: 2rem;
+}
+.gov-create-fields > .gov-action {
+  margin-block-end: 1.5rem;
+}
+.gov-create textarea {
+  resize: vertical;
+  overflow-wrap: anywhere;
 }
 .governance label {
   display: block;
@@ -247,6 +260,9 @@
 .gov-action {
   padding-block: 1.5rem;
   border-block-end: 1px solid hsl(var(--border));
+}
+.gov-action h3 {
+  overflow-wrap: anywhere;
 }
 .gov-action .gov-action {
   margin-inline-start: 1.25rem;
