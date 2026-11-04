@@ -1,16 +1,16 @@
+import { deployment, intuitionTestnet } from "./governance/deployment";
 import { Address } from "viem";
-import { ChainName, getChain } from "./utils/chains";
+import { ChainName } from "./utils/chains";
 
 // Contract Addresses
-export const PUB_DEPLOYMENT_BLOCK = BigInt(process.env.NEXT_PUBLIC_DEPLOYMENT_BLOCK ?? "0");
-export const PUB_DAO_ADDRESS = (process.env.NEXT_PUBLIC_DAO_ADDRESS ?? "") as Address;
-export const PUB_TOKEN_ADDRESS = (process.env.NEXT_PUBLIC_TOKEN_ADDRESS ?? "") as Address;
+export const PUB_DEPLOYMENT_BLOCK: bigint = deployment.deploymentBlock;
+export const PUB_DAO_ADDRESS = deployment.dao;
+export const PUB_TOKEN_ADDRESS = deployment.adapter;
 
 export const PUB_MULTISIG_PLUGIN_ADDRESS = (process.env.NEXT_PUBLIC_MULTISIG_PLUGIN_ADDRESS ?? "") as Address;
 export const PUB_EMERGENCY_MULTISIG_PLUGIN_ADDRESS = (process.env.NEXT_PUBLIC_EMERGENCY_MULTISIG_PLUGIN_ADDRESS ??
   "") as Address;
-export const PUB_DUAL_GOVERNANCE_PLUGIN_ADDRESS = (process.env.NEXT_PUBLIC_DUAL_GOVERNANCE_PLUGIN_ADDRESS ??
-  "") as Address;
+export const PUB_DUAL_GOVERNANCE_PLUGIN_ADDRESS = deployment.plugin;
 export const PUB_SIGNER_LIST_CONTRACT_ADDRESS = (process.env.NEXT_PUBLIC_SIGNER_LIST_CONTRACT_ADDRESS ?? "") as Address;
 export const PUB_ENCRYPTION_REGISTRY_CONTRACT_ADDRESS = (process.env.NEXT_PUBLIC_ENCRYPTION_REGISTRY_CONTRACT_ADDRESS ??
   "") as Address;
@@ -49,13 +49,13 @@ export const DELEGATE_CONTROLLER_ADDRESS = "0xfA06E15B8b4c5BF3FC5d9cfD083d45c53C
 export const PUB_SUBGRAPH_URL = (process.env.NEXT_PUBLIC_SUBGRAPH_URL ?? "") as string;
 
 // Target chain
-export const PUB_CHAIN_NAME = (process.env.NEXT_PUBLIC_CHAIN_NAME ?? "holesky") as ChainName;
-export const PUB_CHAIN = getChain(PUB_CHAIN_NAME);
+export const PUB_CHAIN_NAME = "intuition-testnet" as ChainName;
+export const PUB_CHAIN = intuitionTestnet;
 
 // Network and services
 export const PUB_ALCHEMY_API_KEY = process.env.NEXT_PUBLIC_ALCHEMY_API_KEY ?? "";
 
-export const PUB_WEB3_ENDPOINT = (process.env.NEXT_PUBLIC_WEB3_URL_PREFIX ?? "") + PUB_ALCHEMY_API_KEY;
+export const PUB_WEB3_ENDPOINT = deployment.rpcUrl;
 
 export const PUB_TAIKO_RPC = process.env.NEXT_PUBLIC_TAIKO_RPC || "https://rpc.mainnet.taiko.xyz";
 
@@ -86,13 +86,13 @@ export const STANDARD_PROPOSAL_VETO_PERIOD_DAYS = 10;
 export const STANDARD_PROPOSAL_TIMELOCK_DAYS = 7;
 
 // General
-export const PUB_APP_NAME = "Taiko";
-export const PUB_APP_DESCRIPTION = "Taiko's official UI to interact with the DAO smart contract";
-export const PUB_TOKEN_SYMBOL = "TAIKO";
-export const PUB_TOKEN_DECIMALS = 18;
+export const PUB_APP_NAME = "Intuition governance";
+export const PUB_APP_DESCRIPTION = "Follow proposals and veto with veTRUST on Intuition testnet";
+export const PUB_TOKEN_SYMBOL = deployment.tokenSymbol;
+export const PUB_TOKEN_DECIMALS = deployment.tokenDecimals;
 
 export const PUB_PROJECT_LOGO = "/logo-tk.svg";
-export const PUB_PROJECT_URL = "https://taiko.xyz/";
+export const PUB_PROJECT_URL = "https://intuition.systems";
 export const PUB_BLOG_URL = "https://taiko.xyz/blog";
 export const PUB_FORUM_URL = "https://community.taiko.xyz/";
 export const PUB_WALLET_ICON = "https://avatars.githubusercontent.com/u/37784886";

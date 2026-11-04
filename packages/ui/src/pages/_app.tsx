@@ -1,25 +1,20 @@
+import type { AppProps } from "next/app";
+import Head from "next/head";
 import { RootContextProvider } from "@/context";
-import { Layout } from "@/components/layout";
-import AlertContainer from "@/components/alert/alert-container";
 import "@aragon/ods/index.css";
 import "@/pages/globals.css";
-import { PUB_APP_NAME } from "@/constants";
-import Head from "next/head";
+import "@/governance/governance.css";
 
-export default function AragonetteApp({ Component, pageProps }: any) {
-  // const initialState = cookieToInitialState(config, headers().get('cookie'))
-
+export default function GovernanceApp({ Component, pageProps }: AppProps) {
   return (
-    <div>
+    <>
       <Head>
-        <title>{PUB_APP_NAME}</title>
+        <title>Intuition governance</title>
+        <meta name="description" content="Follow proposals and veto with veTRUST on Intuition testnet." />
       </Head>
       <RootContextProvider>
-        <Layout>
-          <Component {...pageProps} />
-        </Layout>
-        <AlertContainer />
+        <Component {...pageProps} />
       </RootContextProvider>
-    </div>
+    </>
   );
 }

@@ -1,3 +1,4 @@
+import { intuitionTestnet } from "@/governance/deployment";
 import { polygon, mainnet, sepolia, holesky, arbitrum, polygonMumbai, Chain } from "@wagmi/core/chains";
 import { defineChain } from "viem";
 
@@ -13,7 +14,16 @@ export const taiko = defineChain({
   },
 });
 
-export const chainNames = ["mainnet", "polygon", "sepolia", "holesky", "mumbai", "arbitrum", "taiko"] as const;
+export const chainNames = [
+  "intuition-testnet",
+  "mainnet",
+  "polygon",
+  "sepolia",
+  "holesky",
+  "mumbai",
+  "arbitrum",
+  "taiko",
+] as const;
 export type ChainName = (typeof chainNames)[number];
 
 // Short display labels for chains referenced by cross-chain proposal actions.
@@ -24,6 +34,8 @@ export const CHAIN_NAMES: Record<number, string> = { 1: "Ethereum", 167000: "Tai
 
 export function getChain(chainName: ChainName): Chain {
   switch (chainName) {
+    case "intuition-testnet":
+      return intuitionTestnet;
     case "mainnet":
       return mainnet;
     case "polygon":

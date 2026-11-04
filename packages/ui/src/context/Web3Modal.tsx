@@ -1,39 +1,11 @@
-import { http, createConfig } from "wagmi";
-import { walletConnect } from "wagmi/connectors";
-import {
-  PUB_APP_DESCRIPTION,
-  PUB_APP_NAME,
-  PUB_CHAIN_NAME,
-  PUB_PROJECT_URL,
-  PUB_TAIKO_L2_RPC_URL,
-  PUB_WALLET_CONNECT_PROJECT_ID,
-  PUB_WALLET_ICON,
-  PUB_WEB3_ENDPOINT,
-} from "@/constants";
-import { holesky, mainnet } from "viem/chains";
-import { taiko } from "@/utils/chains";
+import { createConfig, http } from "wagmi";
+import { injected, walletConnect } from "wagmi/connectors";
+import { deployment, intuitionTestnet } from "@/governance/deployment";
 
-// wagmi config
-const metadata = {
-  name: PUB_APP_NAME,
-  description: PUB_APP_DESCRIPTION,
-  url: PUB_PROJECT_URL,
-  icons: [PUB_WALLET_ICON],
-};
-
+const projectId = process.env.NEXT_PUBLIC_WALLET_CONNECT_PROJECT_ID;
 export const config = createConfig({
-  chains: PUB_CHAIN_NAME === "holesky" ? [holesky, mainnet, taiko] : [mainnet, taiko],
+  chains: [intuitionTestnet],
   ssr: true,
-  transports: {
-    [holesky.id]: http(PUB_WEB3_ENDPOINT, { batch: true }),
-    [mainnet.id]: http(PUB_WEB3_ENDPOINT, { batch: true }),
-    [taiko.id]: http(PUB_TAIKO_L2_RPC_URL || undefined),
-  } as any,
-  connectors: [
-    walletConnect({
-      projectId: PUB_WALLET_CONNECT_PROJECT_ID,
-      metadata,
-      showQrModal: false,
-    }),
-  ],
+  transports: { [intuitionTestnet.id]: http(deployment.rpcUrl, { retryCount: 2, retryDelay: 1500 }) },
+  connectors: [injected(), ...(projectId ? [walletConnect({ projectId, showQrModal: true })] : [])],
 });
