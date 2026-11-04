@@ -15,6 +15,8 @@ The source manifest is `intuition-contracts-v2-governance/deployments.md` in the
 | Optimistic plugin | `0x61818dCD98276a426b6B95bDCB9E9FCC2235ED46` |
 | veTRUST adapter | `0x66591cdB76D6feC57A056A53faD3d35f850354df` |
 | TrustBonding proxy | `0xc72c348dD5574C10245066846cbA6ce98C3282fc` |
+| MultiVault proxy | `0xAC1AA948D5c40b6C60a07170C5794E595d08C32c` |
+| Wrapped testnet TRUST | `0xDE80b6EE63f7D809427CA350e30093F436A0fe35` |
 | Manager (testnet EOA) | `0x54C15B56800235F273bb659aea820c9D3112B3FD` |
 | Upgrades timelock | `0xA531EAE7752DddF966E9959B4dab82793C971BB1` |
 | Parameters timelock | `0x23C50180DF511b0cccf12a2dD0D3203b25f33Ee5` |
@@ -49,6 +51,26 @@ The fixture manifest identifies a large holder `0xbfc4cB2f93DeEd91de9a07910C9577
 
 ## Supported behavior
 
+### Setup and locking
+
+The `/setup` page lists the full configured addresses with explorer links, live governance settings, and network connection details. It is linked from both proposal and setup navigation. veTRUST is the non-transferable voting weight recorded by TrustBonding; the voting adapter exposes that history to governance. MultiVault is listed as a separate core contract.
+
+The lock form uses `VotingEscrow.sol` / `TrustBonding.sol` at core commit `91c1a24` and the sequence in `script/testnet/LockTrust.s.sol`. RPC checks verified that TrustBonding points to the configured wrapped TRUST and MultiVault contracts, the token uses 18 decimals, and locks require at least 14 days and at most 730 days. Unlock dates round down to whole weeks; minimum duration is checked **after** that rounding. The form defaults to 30 days and displays the actual date before any transaction.
+
+For a new lock, enter an amount and duration, then complete each explicit wallet action:
+
+1. Wrap only the amount missing from the wallet's existing wrapped TRUST balance.
+2. Approve the entered amount for the configured TrustBonding contract. Existing sufficient allowance skips this step.
+3. Create the lock. Each step rechecks configuration, wallet account/network, balances and lock intent, simulates the exact call, and checks estimated gas funds before opening the wallet.
+
+Active locks accept additions at their existing unlock date. Expired or globally unlocked positions can be withdrawn as **wrapped TRUST**, including while deposits are paused. Duration extensions and unwrapping are outside this form's scope. Unsupported smart wallets are rejected unless allowed by the contract. No faucet, gas sponsor or custodial key is introduced; testers need funded wallets.
+
+Confirmed wrapping and approvals remain usable if a later step is rejected. Current balances and allowances determine the next step on return. While this page is open, an unresolved transaction blocks repeat submissions and offers a confirmation retry; successful lock/withdraw confirmation clears the amount, including after a timeout. Transaction links are session-local. No lock receipt is sent to the governance-event importer, which accepts proposal/timelock events only.
+
+New deposits only affect future proposal snapshots. They do not give a new tester voting power on the existing fixtures. Create a subsequent proposal after the test wallets have locked funds. The displayed veTRUST estimate follows the contract's integer division and linear decay; live voting weight remains authoritative.
+
+### Proposals
+
 - Import transaction hashes through RPC, validate configured emitters and ABI events, verify canonical receipt inclusion, and save raw relevant logs with block/transaction provenance.
 - Revalidate local records over RPC before showing them as verified evidence. Missing/reverted/noncanonical receipts and malformed records produce recoverable errors.
 - Store up to 100 receipts in versioned keys scoped to chain/DAO/plugin. Duplicate imports are idempotent; different tabs do not overwrite a shared receipt array. Remove or clear only this deployment's history.
@@ -73,10 +95,15 @@ pnpm --filter dao-ui lint
 pnpm --filter dao-ui test
 pnpm --filter dao-ui build
 CHECK_GOVERNANCE_RPC=1 pnpm --filter dao-ui exec vitest run src/governance/__tests__/deployment.integration.test.ts
+CHECK_GOVERNANCE_RPC=1 pnpm --filter dao-ui exec vitest run src/governance/__tests__/locking.test.ts
 ```
 
 The live check only reads RPC; it does not sign or broadcast. Unit coverage includes recorded creation/veto/execution receipts, foreign emitters, Safe-wrapped log handling, malformed inputs, missing/noncanonical receipts, storage corruption/quota failure, bigint precision, threshold rounding, pinned confirmed reads versus pending eligibility, and nested action decoding.
 
 Results on 2026-11-04: typecheck and lint passed; 253 unit tests passed across 33 files (the opt-in live test is skipped by default); the separate live test passed; production build passed and emitted only static page routes. Static security, logic and CI/history review found no HIGH issues. The identified receipt-save, pagination and replacement-handling issues were corrected; logic fixes were independently rechecked. Existing toolchain warnings about deprecated `next lint`, Browserslist age and workspace build-script configuration remain outside this slice.
 
+Setup follow-up on the same date: 266 unit tests passed, with two live checks skipped by default. The separate locking live check passed against the configured contracts and funded manager account. Typecheck, lint and production build passed, including the static `/setup` route. Static transaction-flow review identified a receipt-retry cleanup issue; it was fixed and independently rechecked. Locking coverage includes exact decimal precision, weekly rounding, native balance reserve, wrap-shortfall/approval progression, exact calldata and spender, failed simulations, identity checks, and withdrawal guards.
+
 Manual UI and wallet review remains user-owned: import fixtures, reload, open proposal C/D, compare the visible actions, and check wallet veto/execution with the intended test account. Browser QA and signed transactions were not performed during implementation.
+
+For the new form, manually open `/setup`, connect a funded testnet wallet, enter a small amount and 30-day duration, then confirm wrap, approval and lock in sequence. Check the resulting lock and voting power, and use a newly created proposal to test that wallet's veto eligibility. A rejected wallet step should preserve the input and earlier confirmed steps.

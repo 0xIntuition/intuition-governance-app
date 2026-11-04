@@ -12,6 +12,8 @@ export const deployment = {
   plugin: getAddress("0x61818dCD98276a426b6B95bDCB9E9FCC2235ED46"),
   adapter: getAddress("0x66591cdB76D6feC57A056A53faD3d35f850354df"),
   trustBonding: getAddress("0xc72c348dD5574C10245066846cbA6ce98C3282fc"),
+  multiVault: getAddress("0xAC1AA948D5c40b6C60a07170C5794E595d08C32c"),
+  wrappedTrust: getAddress("0xDE80b6EE63f7D809427CA350e30093F436A0fe35"),
   manager: getAddress("0x54C15B56800235F273bb659aea820c9D3112B3FD"),
   upgradesTimelock: getAddress("0xA531EAE7752DddF966E9959B4dab82793C971BB1"),
   parametersTimelock: getAddress("0x23C50180DF511b0cccf12a2dD0D3203b25f33Ee5"),

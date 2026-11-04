@@ -9,6 +9,8 @@ pnpm --filter dao-ui dev
 
 Open the local development URL and select **Import testnet fixtures**. The four deployed proposals exercise executed, vetoed, active, and executable states. Importing only reads chain data; veto and execution require a connected testnet wallet and explicit confirmation.
 
+Open **Setup & lock TRUST** (`/setup`) to inspect the configured contracts, including MultiVault and TrustBonding, and create a veTRUST lock. The form guides a funded testnet wallet through wrapping TRUST, approving the entered amount, and locking it. Existing locks can receive additions; expired locks can be withdrawn as wrapped TRUST.
+
 The pinned public RPC works without an environment file. Optional overrides are documented in `packages/ui/.env.example`. WalletConnect requires a project ID; an injected wallet does not.
 
 See [testnet setup, deployment provenance and limitations](docs/governance/testnet.md), the [RPC-first MVP specification](docs/governance/rpc-mvp.md), and the [Linear milestone plan](docs/governance/project-plan.md). Proposal creation/Safe export and mainnet configuration are subsequent work.

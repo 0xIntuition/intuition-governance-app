@@ -1,1 +1,1 @@
-export { Wallet as default } from "@/governance/screen";
+export { Wallet as default } from "@/governance/shared";

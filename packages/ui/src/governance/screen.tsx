@@ -1,8 +1,8 @@
-import Link from "next/link";
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { GovernanceHeader, Explorer, ErrorMessage, short, message, units, date } from "./shared";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useAccount, useConnect, useDisconnect, useSwitchChain, useWalletClient } from "wagmi";
+import { useAccount, useWalletClient } from "wagmi";
 import { formatUnits, isAddressEqual, type Address, type Hex } from "viem";
 import { deployment, fixtureTransactions } from "./deployment";
 import { pluginAbi, timelockAbi } from "./contracts";
@@ -21,62 +21,7 @@ import {
   type Proposal,
 } from "./rpc";
 
-const short = (value: string) => `${value.slice(0, 8)}…${value.slice(-6)}`;
-const message = (error: unknown) =>
-  error instanceof Error ? error.message.split("\n")[0] : "The request failed. Please retry.";
-const units = (value: bigint) => formatUnits(value, deployment.tokenDecimals);
-const date = (value: bigint) => new Date(Number(value) * 1000).toLocaleString();
 const proposalKey = (id: string) => ["governance-proposal", ...governanceKey, id];
-function Explorer({
-  value,
-  kind = "address",
-  children,
-}: {
-  value: string;
-  kind?: "address" | "tx";
-  children?: ReactNode;
-}) {
-  return (
-    <a href={`${deployment.explorer}/${kind}/${value}`} target="_blank" rel="noopener noreferrer" title={value}>
-      {children ?? short(value)}
-    </a>
-  );
-}
-function ErrorMessage({ error }: { error: unknown }) {
-  return error ? (
-    <p className="gov-error" role="alert">
-      {message(error)}
-    </p>
-  ) : null;
-}
-export function Wallet() {
-  const { address, chainId, isConnected } = useAccount();
-  const { connectors, connect, isPending, error } = useConnect();
-  const { disconnect } = useDisconnect();
-  const { switchChain, isPending: switching, error: switchError } = useSwitchChain();
-  return (
-    <div className="gov-wallet">
-      {isConnected && address ? (
-        <>
-          <span title={address}>{short(address)}</span>
-          {chainId !== deployment.chainId && (
-            <button disabled={switching} onClick={() => switchChain({ chainId: deployment.chainId })}>
-              Switch to testnet
-            </button>
-          )}
-          <button onClick={() => disconnect()}>Disconnect</button>
-        </>
-      ) : (
-        connectors.map((connector) => (
-          <button key={connector.uid} disabled={isPending} onClick={() => connect({ connector })}>
-            Connect {connector.name === "Injected" ? "wallet" : connector.name}
-          </button>
-        ))
-      )}
-      <ErrorMessage error={error || switchError} />
-    </div>
-  );
-}
 
 export default function GovernanceScreen() {
   const router = useRouter();
@@ -249,13 +194,7 @@ export default function GovernanceScreen() {
       <a className="gov-skip" href="#governance-content">
         Skip to proposals
       </a>
-      <header className="gov-header">
-        <Link className="gov-brand" href="/">
-          Intuition <span>Governance</span>
-        </Link>
-        <div className="gov-network">Intuition testnet · 13579</div>
-        <Wallet />
-      </header>
+      <GovernanceHeader page="proposals" />
       <main id="governance-content" className="gov-main">
         <div className="gov-title">
           <div>
@@ -269,36 +208,6 @@ export default function GovernanceScreen() {
             Refresh from chain
           </button>
         </div>
-        <details className="gov-deployment">
-          <summary>Testnet deployment and settings</summary>
-          <dl className="gov-facts">
-            <dt>DAO</dt>
-            <dd>
-              <Explorer value={deployment.dao} />
-            </dd>
-            <dt>Optimistic plugin</dt>
-            <dd>
-              <Explorer value={deployment.plugin} />
-            </dd>
-            <dt>Voting adapter</dt>
-            <dd>
-              <Explorer value={deployment.adapter} />
-            </dd>
-            <dt>Proposer (testnet EOA)</dt>
-            <dd>
-              <Explorer value={deployment.manager} />
-            </dd>
-            <dt>Minimum veto window</dt>
-            <dd>{deploymentQuery.data ? `${deploymentQuery.data.settings[1]} seconds` : "Unavailable"}</dd>
-            <dt>Veto threshold</dt>
-            <dd>
-              {deploymentQuery.data ? `${deploymentQuery.data.settings[0] / 10_000}% of snapshot power` : "Unavailable"}
-            </dd>
-            <dt>Upgrade timelock delay</dt>
-            <dd>{deploymentQuery.data ? `${deploymentQuery.data.timelockDelay} seconds` : "Unavailable"}</dd>
-          </dl>
-          <p>Testnet blocks are produced when transactions arrive. Displayed state follows the latest mined block.</p>
-        </details>
         <ErrorMessage error={deploymentQuery.error} />
         {deploymentQuery.isPending && <p role="status">Checking the governance contracts…</p>}
         {selected ? (
