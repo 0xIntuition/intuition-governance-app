@@ -20,5 +20,7 @@ export default defineConfig({
     // node as the default avoids slowing the pure logic/decoder suites. A
     // *.test.ts that needs a DOM can opt in with `// @vitest-environment jsdom`.
     environmentMatchGlobs: [["**/*.test.tsx", "jsdom"]],
+    // The recorded receipts and fixtures in these suites come from the testnet deployment.
+    env: { NEXT_PUBLIC_GOVERNANCE_NETWORK: "testnet" },
   },
 });

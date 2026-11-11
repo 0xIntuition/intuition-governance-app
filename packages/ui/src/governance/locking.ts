@@ -46,7 +46,7 @@ export async function readLockState(
   account?: Address,
   client: GovernanceClient = governanceClient
 ): Promise<LockState> {
-  if ((await client.getChainId()) !== deployment.chainId) throw new Error("Connect to the Intuition testnet RPC.");
+  if ((await client.getChainId()) !== deployment.chainId) throw new Error(`Connect to the ${deployment.name} RPC.`);
   for (const address of [deployment.trustBonding, deployment.wrappedTrust, deployment.multiVault]) {
     const code = await client.getCode({ address });
     if (!code || code === "0x") throw new Error("A configured core contract is missing. Locking is unavailable.");
@@ -134,7 +134,7 @@ export function makeLockPlan(state: LockState, input: string, days: string): Loc
   }
   const wrapAmount = amount > state.wrappedBalance ? amount - state.wrappedBalance : 0n;
   if (wrapAmount >= state.nativeBalance)
-    throw new Error("Keep enough native tTRUST for wrapping and transaction fees.");
+    throw new Error(`Keep enough native ${deployment.nativeCurrency.symbol} for wrapping and transaction fees.`);
   const step = wrapAmount > 0n ? "wrap" : state.allowance < amount ? "approve" : "lock";
   // Match VotingEscrow's integer slope division before multiplying by time.
   const estimatedPower = ((state.lockedAmount + amount) / state.maxTime) * (unlockTime - state.timestamp);

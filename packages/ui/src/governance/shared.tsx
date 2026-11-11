@@ -77,7 +77,9 @@ export function GovernanceHeader({ page }: { page: "proposals" | "setup" | "crea
           Setup & lock TRUST
         </Link>
       </nav>
-      <div className="gov-network">Intuition testnet · 13579</div>
+      <div className="gov-network">
+        {deployment.name} · {deployment.chainId}
+      </div>
       <Wallet />
     </header>
   );

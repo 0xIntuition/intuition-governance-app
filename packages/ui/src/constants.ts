@@ -1,4 +1,4 @@
-import { deployment, intuitionTestnet } from "./governance/deployment";
+import { deployment, governanceChain } from "./governance/deployment";
 import { Address } from "viem";
 import { ChainName } from "./utils/chains";
 
@@ -49,8 +49,8 @@ export const DELEGATE_CONTROLLER_ADDRESS = "0xfA06E15B8b4c5BF3FC5d9cfD083d45c53C
 export const PUB_SUBGRAPH_URL = (process.env.NEXT_PUBLIC_SUBGRAPH_URL ?? "") as string;
 
 // Target chain
-export const PUB_CHAIN_NAME = "intuition-testnet" as ChainName;
-export const PUB_CHAIN = intuitionTestnet;
+export const PUB_CHAIN_NAME = "intuition" as ChainName;
+export const PUB_CHAIN = governanceChain;
 
 // Network and services
 export const PUB_ALCHEMY_API_KEY = process.env.NEXT_PUBLIC_ALCHEMY_API_KEY ?? "";
@@ -87,7 +87,7 @@ export const STANDARD_PROPOSAL_TIMELOCK_DAYS = 7;
 
 // General
 export const PUB_APP_NAME = "Intuition governance";
-export const PUB_APP_DESCRIPTION = "Follow proposals and veto with veTRUST on Intuition testnet";
+export const PUB_APP_DESCRIPTION = `Follow proposals and veto with veTRUST on ${deployment.name}`;
 export const PUB_TOKEN_SYMBOL = deployment.tokenSymbol;
 export const PUB_TOKEN_DECIMALS = deployment.tokenDecimals;
 

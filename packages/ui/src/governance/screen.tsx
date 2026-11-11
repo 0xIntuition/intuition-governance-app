@@ -109,7 +109,7 @@ export default function GovernanceScreen() {
     enabled: !selected && deploymentQuery.isSuccess && visibleIds.length > 0,
     queryFn: async () => {
       const rows: Array<{ id: string; proposal?: Proposal; error?: string }> = [];
-      // Sequential, bounded pages avoid bursts against the public testnet RPC.
+      // Sequential, bounded pages avoid bursts against the public RPC.
       for (const id of visibleIds) {
         try {
           rows.push({
@@ -254,15 +254,17 @@ export default function GovernanceScreen() {
               <p id="import-help">
                 Only receipts from this deployment are accepted. Importing does not ask your wallet to sign.
               </p>
-              <button
-                disabled={busy || !deploymentQuery.isSuccess}
-                onClick={() => void importHashes(fixtureTransactions)}
-              >
-                Import testnet fixtures
-              </button>
+              {fixtureTransactions.length > 0 && (
+                <button
+                  disabled={busy || !deploymentQuery.isSuccess}
+                  onClick={() => void importHashes(fixtureTransactions)}
+                >
+                  Import testnet fixtures
+                </button>
+              )}
               <ErrorMessage error={importError} />
               <p role="status" aria-live="polite">
-                {busy ? "Working with the testnet RPC…" : notice}
+                {busy ? "Working with the RPC…" : notice}
               </p>
             </section>
             <section className="gov-proposals" aria-labelledby="proposals-title">
@@ -272,7 +274,10 @@ export default function GovernanceScreen() {
                 <p role="status">Loading and verifying proposal data…</p>
               ) : null}
               {ready && !history.isFetching && !ids.length && (
-                <p>No proposals imported in this browser. Import a transaction or load the testnet fixtures above.</p>
+                <p>
+                  No proposals imported in this browser. Import a transaction
+                  {fixtureTransactions.length > 0 ? " or load the testnet fixtures above" : ""}.
+                </p>
               )}
               <div className="app-surface gov-rows">
                 {visibleIds.map((id) => {
@@ -367,7 +372,7 @@ export default function GovernanceScreen() {
         )}
       </main>
       <footer className="gov-footer">
-        <p>Intuition testnet. Local history is not a complete proposal registry.</p>
+        <p>{deployment.name}. Local history is not a complete proposal registry.</p>
         <a
           href="https://github.com/0xIntuition/intuition-contracts-v2-governance"
           target="_blank"
@@ -421,7 +426,7 @@ function ProposalDetail({
     setTxHash(undefined);
     try {
       if ((await wallet.getChainId()) !== deployment.chainId)
-        throw new Error("Switch your wallet to Intuition testnet first.");
+        throw new Error(`Switch your wallet to ${deployment.name} first.`);
       if (!isAddressEqual(wallet.account.address, address))
         throw new Error("Your wallet account changed. Review the proposal again.");
       await verifyDeployment();
@@ -469,7 +474,7 @@ function ProposalDetail({
       setPending(false);
     }
   };
-  if (proposal.isPending) return <p role="status">Loading proposal from the testnet RPC…</p>;
+  if (proposal.isPending) return <p role="status">Loading proposal from the RPC…</p>;
   if (!proposal.data) return <ErrorMessage error={proposal.error} />;
   const p = proposal.data;
   const creator = events.find((e) => e.name === "ProposalCreated" && e.proposalId === id);
@@ -581,7 +586,7 @@ function ProposalDetail({
             )}
           </>
         )}
-        {chainId && chainId !== deployment.chainId && <p>Switch to Intuition testnet to submit a transaction.</p>}
+        {chainId && chainId !== deployment.chainId && <p>Switch to {deployment.name} to submit a transaction.</p>}
         <div className="gov-actions">
           <button
             className={!reviewAction && voting.data?.canVeto ? "gov-primary" : undefined}
@@ -710,7 +715,9 @@ function ActionView({
           <Explorer value={action.to} />
         </dd>
         <dt>Value</dt>
-        <dd>{formatUnits(action.value, 18)} tTRUST</dd>
+        <dd>
+          {formatUnits(action.value, deployment.nativeCurrency.decimals)} {deployment.nativeCurrency.symbol}
+        </dd>
         {decoded.proxy && (
           <>
             <dt>Proxy</dt>

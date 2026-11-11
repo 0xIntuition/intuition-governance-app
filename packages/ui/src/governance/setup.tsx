@@ -4,7 +4,7 @@ import { Fragment, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAccount, useWalletClient } from "wagmi";
 import { isAddressEqual, type Hex } from "viem";
-import { deployment, intuitionTestnet } from "./deployment";
+import { deployment, governanceChain } from "./deployment";
 import { governanceClient, governanceKey, verifyDeployment } from "./rpc";
 import { canWithdraw, DAY, makeLockPlan, prepareLockTransaction, readLockState, sameLockIntent } from "./locking";
 import { date, ErrorMessage, Explorer, GovernanceHeader, units } from "./shared";
@@ -41,7 +41,7 @@ export default function SetupPage() {
         <section aria-labelledby="addresses-title">
           <h2 id="addresses-title">Deployed contracts</h2>
           <p>
-            These are the configured addresses on Intuition testnet. veTRUST is the voting power recorded by
+            These are the configured addresses on {deployment.name}. veTRUST is the voting power recorded by
             TrustBonding; MultiVault is a separate protocol contract.
           </p>
           <dl className="gov-addresses">
@@ -62,7 +62,9 @@ export default function SetupPage() {
               <dt>RPC endpoint</dt>
               <dd className="gov-hash">{deployment.rpcUrl}</dd>
               <dt>Native currency</dt>
-              <dd>tTRUST · 18 decimals</dd>
+              <dd>
+                {deployment.nativeCurrency.symbol} · {deployment.nativeCurrency.decimals} decimals
+              </dd>
               <dt>Explorer</dt>
               <dd>
                 <a href={deployment.explorer} target="_blank" rel="noopener noreferrer">
@@ -140,7 +142,7 @@ function LockAndSettings() {
       currentWallet.current.chainId !== deployment.chainId ||
       (await wallet.getChainId()) !== deployment.chainId
     )
-      throw new Error("Switch your wallet to Intuition testnet first.");
+      throw new Error(`Switch your wallet to ${deployment.name} first.`);
     const accounts = await wallet.getAddresses();
     if (
       !currentWallet.current.address ||
@@ -169,9 +171,9 @@ function LockAndSettings() {
       const gasPrice = await governanceClient.getGasPrice();
       const value = intent !== "withdraw" && intent.step === "wrap" ? intent.wrapAmount : 0n;
       if (fresh.nativeBalance < value + (gas * gasPrice * 12n) / 10n)
-        throw new Error("Keep more native tTRUST in your wallet for transaction fees.");
+        throw new Error(`Keep more native ${deployment.nativeCurrency.symbol} in your wallet for transaction fees.`);
       await assertWallet(address);
-      const hash = await wallet.sendTransaction({ ...request, account: wallet.account, chain: intuitionTestnet });
+      const hash = await wallet.sendTransaction({ ...request, account: wallet.account, chain: governanceChain });
       const label =
         intent === "withdraw"
           ? "Withdraw lock"
@@ -226,7 +228,7 @@ function LockAndSettings() {
         <div className="gov-title">
           <div>
             <h2 id="lock-title">Lock TRUST for veTRUST</h2>
-            <p>Use a funded testnet wallet. Keep some native tTRUST for transaction fees.</p>
+            <p>Use a funded wallet. Keep some native {deployment.nativeCurrency.symbol} for transaction fees.</p>
           </div>
           <button disabled={busy || query.isFetching} onClick={() => void query.refetch()}>
             Refresh balances
@@ -236,7 +238,7 @@ function LockAndSettings() {
         {query.isPending && <p role="status">Reading lock settings and wallet balances…</p>}
         {!address && <p>Connect a wallet using the button above to prepare a lock.</p>}
         {address && chainId !== deployment.chainId && (
-          <p>Switch to Intuition testnet using the wallet controls above.</p>
+          <p>Switch to {deployment.name} using the wallet controls above.</p>
         )}
         {state && (
           <>
@@ -247,7 +249,7 @@ function LockAndSettings() {
             </p>
             {address && (
               <dl className="gov-facts">
-                <dt>Native tTRUST</dt>
+                <dt>Native {deployment.nativeCurrency.symbol}</dt>
                 <dd>{units(state.nativeBalance)}</dd>
                 <dt>Available wrapped TRUST</dt>
                 <dd>{units(state.wrappedBalance)}</dd>
@@ -328,8 +330,9 @@ function LockAndSettings() {
                   )}
                 </div>
                 <p id="lock-funding">
-                  Existing wrapped TRUST is used first. Any shortfall is wrapped from native tTRUST, then you approve
-                  only the entered amount and confirm the lock. Each step is a separate wallet transaction.
+                  Existing wrapped TRUST is used first. Any shortfall is wrapped from native{" "}
+                  {deployment.nativeCurrency.symbol}, then you approve only the entered amount and confirm the lock.
+                  Each step is a separate wallet transaction.
                 </p>
                 <p id="lock-rounding">
                   {state.lockedAmount > 0n
@@ -355,7 +358,7 @@ function LockAndSettings() {
                     </p>
                     <p role="status">
                       {plan.step === "wrap"
-                        ? `Next: wrap ${units(plan.wrapAmount)} tTRUST into wrapped TRUST.`
+                        ? `Next: wrap ${units(plan.wrapAmount)} ${deployment.nativeCurrency.symbol} into wrapped TRUST.`
                         : plan.step === "approve"
                           ? `Next: approve TrustBonding to spend ${units(plan.amount)} wrapped TRUST.`
                           : "Next: confirm the lock in your wallet."}

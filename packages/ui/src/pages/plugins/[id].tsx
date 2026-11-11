@@ -1,6 +1,15 @@
+import type { GetStaticPaths, GetStaticProps } from "next";
 import { useRouter } from "next/router";
 import GovernanceScreen from "@/governance/screen";
 import Link from "next/link";
+
+// The static export pre-renders the deployment's only plugin page.
+export const getStaticPaths: GetStaticPaths = async () => ({
+  paths: [{ params: { id: "community-proposals" } }],
+  fallback: false,
+});
+
+export const getStaticProps: GetStaticProps = async () => ({ props: {} });
 
 export default function PluginPage() {
   const router = useRouter();

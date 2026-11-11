@@ -10,12 +10,12 @@ import {
   type Address,
   type Hex,
 } from "viem";
-import { deployment, intuitionTestnet } from "./deployment";
+import { deployment, governanceChain } from "./deployment";
 import { daoPermissionsAbi, pluginAbi, proposerPermissionId, proxyAdminAbi, timelockAbi, votesAbi } from "./contracts";
 import { normalizeReceipt, parseTransactionHash, type StoredReceipt } from "./events";
 
 export const governanceClient = createPublicClient({
-  chain: intuitionTestnet,
+  chain: governanceChain,
   transport: http(deployment.rpcUrl, { retryCount: 2, retryDelay: 1500, timeout: 15_000 }),
 });
 export type GovernanceClient = typeof governanceClient;
@@ -63,7 +63,7 @@ export async function verifyDeployment(client: GovernanceClient = governanceClie
 export async function fetchReceipt(hash: string, client: GovernanceClient = governanceClient): Promise<StoredReceipt> {
   const transactionHash = parseTransactionHash(hash);
   if ((await client.getChainId()) !== deployment.chainId)
-    throw new Error("The RPC chain does not match Intuition testnet.");
+    throw new Error(`The RPC chain does not match ${deployment.name}.`);
   const receipt = await client.getTransactionReceipt({ hash: transactionHash });
   const block = await client.getBlock({ blockNumber: receipt.blockNumber });
   if (block.hash !== receipt.blockHash)
