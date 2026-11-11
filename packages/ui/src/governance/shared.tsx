@@ -43,7 +43,7 @@ export function Wallet() {
           <span title={address}>{short(address)}</span>
           {chainId !== deployment.chainId && (
             <button disabled={switching} onClick={() => switchChain({ chainId: deployment.chainId })}>
-              Switch to testnet
+              Switch to {deployment.name}
             </button>
           )}
           <button onClick={() => disconnect()}>Disconnect</button>

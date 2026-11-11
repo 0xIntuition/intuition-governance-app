@@ -13,10 +13,10 @@ const addresses = [
   ["DAO", deployment.dao],
   ["Optimistic voting plugin", deployment.plugin],
   ["Governance voting adapter", deployment.adapter],
-  ["Testnet veTRUST · TrustBonding", deployment.trustBonding],
+  ["veTRUST · TrustBonding", deployment.trustBonding],
   ["MultiVault", deployment.multiVault],
-  ["Wrapped testnet TRUST", deployment.wrappedTrust],
-  ["Manager · testnet EOA", deployment.manager],
+  ["Wrapped TRUST", deployment.wrappedTrust],
+  [`Manager · ${deployment.managerLabel}`, deployment.manager],
   ["Upgrades timelock", deployment.upgradesTimelock],
   ["Parameters timelock", deployment.parametersTimelock],
   ["TrustBonding ProxyAdmin", deployment.proxyAdmin],
@@ -35,8 +35,8 @@ export default function SetupPage() {
       </a>
       <GovernanceHeader page="setup" />
       <main id="setup-content" className="gov-main gov-setup">
-        <h1>Testnet setup</h1>
-        <p>Check the contracts behind this application and lock testnet TRUST to participate in governance.</p>
+        <h1>{deployment.testnet ? "Testnet setup" : "Setup"}</h1>
+        <p>Check the contracts behind this application and lock TRUST to participate in governance.</p>
         <LockAndSettings />
         <section aria-labelledby="addresses-title">
           <h2 id="addresses-title">Deployed contracts</h2>
@@ -68,7 +68,7 @@ export default function SetupPage() {
               <dt>Explorer</dt>
               <dd>
                 <a href={deployment.explorer} target="_blank" rel="noopener noreferrer">
-                  Open testnet explorer
+                  Open explorer
                 </a>
               </dd>
             </dl>
@@ -411,8 +411,9 @@ function LockAndSettings() {
           <dd>{query.data ? `${query.data.governance.timelockDelay} seconds` : "Unavailable"}</dd>
         </dl>
         <p>
-          Settings and balances are read over RPC. This testnet produces blocks when transactions arrive; lock
-          eligibility uses the pending block timestamp.
+          Settings and balances are read over RPC.{" "}
+          {deployment.testnet ? "This testnet produces blocks when transactions arrive, so lock" : "Lock"} eligibility
+          uses the pending block timestamp.
         </p>
       </section>
     </>

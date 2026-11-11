@@ -539,7 +539,7 @@ function ProposalDetail({
           {creator?.creator ? (
             <Explorer value={creator.creator}>
               {isAddressEqual(creator.creator as Address, deployment.manager)
-                ? "Manager (testnet EOA)"
+                ? `Manager (${deployment.managerLabel})`
                 : short(creator.creator)}
             </Explorer>
           ) : (
