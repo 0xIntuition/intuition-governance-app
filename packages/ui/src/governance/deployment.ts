@@ -63,6 +63,8 @@ export const governanceChain = defineChain({
   nativeCurrency: deployment.nativeCurrency,
   rpcUrls: { default: { http: [deployment.rpcUrl] } },
   blockExplorers: { default: { name: "Blockscout", url: deployment.explorer } },
+  // Canonical Multicall3, deployed at the same address on chains 1155 and 13579.
+  contracts: { multicall3: { address: getAddress("0xcA11bde05977b3631167028862bE2a173976CA11") } },
   testnet: deployment.testnet,
 });
 

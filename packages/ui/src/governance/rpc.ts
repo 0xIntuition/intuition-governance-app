@@ -121,6 +121,62 @@ export async function readProposal(id: bigint, client: GovernanceClient = govern
   };
 }
 export type Proposal = Awaited<ReturnType<typeof readProposal>>;
+
+// The plugin's creation counter sits in the low 64 bits of each proposal ID and equals
+// its index in `proposalIds`, so it orders proposals by creation.
+export const proposalIndex = (id: bigint) => id & ((1n << 64n) - 1n);
+export const proposalIdPageSize = 20;
+export type ProposalIdPage = { count: bigint; ids: string[] };
+
+// Reads one page of proposal IDs, newest first. Page 0 also reads `proposalCount`;
+// later pages reuse that count so indexes stay stable while new proposals arrive.
+// Each page is a single Multicall3 call.
+export async function readProposalIdPage(
+  page: number,
+  count?: bigint,
+  client: GovernanceClient = governanceClient
+): Promise<ProposalIdPage> {
+  const total =
+    count ?? (await client.readContract({ address: deployment.plugin, abi: pluginAbi, functionName: "proposalCount" }));
+  const end = total - BigInt(page * proposalIdPageSize);
+  if (end <= 0n) return { count: total, ids: [] };
+  const start = end > BigInt(proposalIdPageSize) ? end - BigInt(proposalIdPageSize) : 0n;
+  const contracts = [];
+  for (let index = end - 1n; index >= start; index--)
+    contracts.push({
+      address: deployment.plugin,
+      abi: pluginAbi,
+      functionName: "proposalIds",
+      args: [index],
+    } as const);
+  const ids = await client.multicall({ contracts, allowFailure: false });
+  // A real ID always carries a nonzero start date. Zero means the RPC answered from
+  // a state that does not include this proposal yet.
+  if (ids.some((id) => id === 0n)) throw new Error("The RPC returned an incomplete proposal list. Retry shortly.");
+  return { count: total, ids: ids.map(String) };
+}
+
+export function nextProposalIdPage(last: ProposalIdPage, page: number) {
+  return BigInt((page + 1) * proposalIdPageSize) < last.count ? { page: page + 1, count: last.count } : undefined;
+}
+
+// Merges listed and imported IDs without duplicates, newest first. While older chain
+// pages are still unread, imported IDs older than the loaded window wait for their page.
+export function mergeProposalIds(listed: readonly string[], imported: readonly string[], listComplete: boolean) {
+  const oldest = listed.reduce<bigint | undefined>((min, id) => {
+    const index = proposalIndex(BigInt(id));
+    return min === undefined || index < min ? index : min;
+  }, undefined);
+  const extra = imported.filter((id) => listComplete || oldest === undefined || proposalIndex(BigInt(id)) >= oldest);
+  return [...new Set([...listed, ...extra])].sort((a, b) => {
+    const x = BigInt(a);
+    const y = BigInt(b);
+    const ix = proposalIndex(x);
+    const iy = proposalIndex(y);
+    if (ix !== iy) return ix > iy ? -1 : 1;
+    return x === y ? 0 : x > y ? -1 : 1;
+  });
+}
 export async function readVotingPower(proposal: Proposal, account: Address) {
   const at = { address: deployment.adapter, abi: votesAbi, blockNumber: proposal.blockNumber } as const;
   const snapshot = await governanceClient.readContract({
