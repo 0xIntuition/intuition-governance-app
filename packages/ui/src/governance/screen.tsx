@@ -390,7 +390,9 @@ export default function GovernanceScreen() {
                 </button>
               </div>
             ))}
-            <button onClick={() => setConfirmClear(true)}>Clear local history</button>
+            <button className="gov-history-clear" onClick={() => setConfirmClear(true)}>
+              Clear local history
+            </button>
             {confirmClear && (
               <div className="gov-actions">
                 <p>Remove all imported history from this browser?</p>
