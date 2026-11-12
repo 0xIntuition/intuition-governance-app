@@ -10,7 +10,7 @@ export default function GovernanceApp({ Component, pageProps }: AppProps) {
   return (
     <>
       <Head>
-        <title>Intuition governance</title>
+        <title>Intuition Governance</title>
         <meta name="description" content={`${PUB_APP_DESCRIPTION}.`} />
       </Head>
       <RootContextProvider>

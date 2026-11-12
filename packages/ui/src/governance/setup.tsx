@@ -28,7 +28,7 @@ export default function SetupPage() {
   return (
     <div className="governance">
       <Head>
-        <title>Setup & lock TRUST · Intuition governance</title>
+        <title>Setup & Lock TRUST · Intuition Governance</title>
       </Head>
       <a className="gov-skip" href="#setup-content">
         Skip to setup
