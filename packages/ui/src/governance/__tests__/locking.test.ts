@@ -165,6 +165,7 @@ it("rejects a different RPC chain or token identity before reading wallet funds"
     getChainId: vi.fn().mockResolvedValue(1),
     getCode: vi.fn().mockResolvedValue("0x1234"),
     readContract: vi.fn().mockResolvedValue(deployment.dao),
+    getBlock: vi.fn().mockResolvedValue({ timestamp: 0n }),
     getBalance: vi.fn(),
   };
   await expect(readLockState(state.account, client as unknown as GovernanceClient)).rejects.toThrow("testnet RPC");

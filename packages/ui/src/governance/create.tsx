@@ -130,7 +130,7 @@ export default function CreateProposalPage() {
           !isAddressEqual(accounts[0], address) ||
           !isAddressEqual(wallet.account.address, address)
         )
-          throw new Error("Your wallet or network changed. Review the proposal again on Intuition testnet.");
+          throw new Error(`Your wallet or network changed. Review the proposal again on ${deployment.name}.`);
       };
       await checkWallet();
       const simulation = await prepareProposal(address, resolved);
@@ -164,7 +164,7 @@ export default function CreateProposalPage() {
   return (
     <div className="governance">
       <Head>
-        <title>New proposal · Intuition governance</title>
+        <title>New Proposal · Intuition Governance</title>
       </Head>
       <a className="gov-skip" href="#create-content">
         Skip to proposal form
@@ -185,7 +185,7 @@ export default function CreateProposalPage() {
                 : "This wallet cannot create this proposal. An existing proposer can submit an Add proposer proposal for your address."}
             </p>
           ) : null}
-          {address && chainId !== deployment.chainId && <p>Switch your wallet to Intuition testnet to continue.</p>}
+          {address && chainId !== deployment.chainId && <p>Switch your wallet to {deployment.name} to continue.</p>}
         </div>
         <ErrorMessage error={config.error || permission.error} />
         {(config.isError || permission.isError) && (

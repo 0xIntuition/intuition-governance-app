@@ -1,4 +1,4 @@
-import { encodeFunctionData, isAddressEqual, parseAbi, parseUnits, type Abi, type Address } from "viem";
+import { encodeFunctionData, isAddressEqual, parseAbi, parseUnits, type Abi, type Address, type Hex } from "viem";
 import { deployment } from "./deployment";
 import { governanceClient, type GovernanceClient } from "./rpc";
 
@@ -46,25 +46,43 @@ export async function readLockState(
   account?: Address,
   client: GovernanceClient = governanceClient
 ): Promise<LockState> {
-  if ((await client.getChainId()) !== deployment.chainId) throw new Error("Connect to the Intuition testnet RPC.");
-  for (const address of [deployment.trustBonding, deployment.wrappedTrust, deployment.multiVault]) {
-    const code = await client.getCode({ address });
-    if (!code || code === "0x") throw new Error("A configured core contract is missing. Locking is unavailable.");
-  }
+  if ((await client.getChainId()) !== deployment.chainId) throw new Error(`Connect to the ${deployment.name} RPC.`);
   const at = { address: deployment.trustBonding, abi: trustBondingAbi, blockTag: "pending" } as const;
-  const token = await client.readContract({ ...at, functionName: "token" });
-  const multiVault = await client.readContract({ ...at, functionName: "multiVault" });
+  const tokenAt = { address: deployment.wrappedTrust, abi: wrappedTrustAbi, blockTag: "pending" } as const;
+  // Independent reads run together; concurrent pending reads share one Multicall3 call.
+  // The checks below keep their original order, so the first failure reported is unchanged.
+  const reads = await Promise.allSettled([
+    Promise.all(
+      [deployment.trustBonding, deployment.wrappedTrust, deployment.multiVault].map((address) =>
+        client.getCode({ address })
+      )
+    ),
+    client.readContract({ ...at, functionName: "token" }),
+    client.readContract({ ...at, functionName: "multiVault" }),
+    client.readContract({ ...tokenAt, functionName: "decimals" }),
+    client.readContract({ ...at, functionName: "MINTIME" }),
+    client.readContract({ ...at, functionName: "MAXTIME" }),
+    client.readContract({ ...at, functionName: "paused" }),
+    client.readContract({ ...at, functionName: "unlocked" }),
+    client.getBlock({ blockTag: "pending" }),
+  ] as const);
+  const value = <T>(read: PromiseSettledResult<T>) => {
+    if (read.status === "rejected") throw read.reason;
+    return read.value;
+  };
+  if (value(reads[0]).some((code) => !code || code === "0x"))
+    throw new Error("A configured core contract is missing. Locking is unavailable.");
+  const token = value(reads[1]);
+  const multiVault = value(reads[2]);
   if (!isAddressEqual(token, deployment.wrappedTrust) || !isAddressEqual(multiVault, deployment.multiVault))
     throw new Error("The TrustBonding configuration changed. Locking is unavailable until the deployment is checked.");
-  const tokenAt = { address: deployment.wrappedTrust, abi: wrappedTrustAbi, blockTag: "pending" } as const;
-  if ((await client.readContract({ ...tokenAt, functionName: "decimals" })) !== 18)
-    throw new Error("The configured wrapped TRUST token has unsupported decimals.");
-  const minTime = await client.readContract({ ...at, functionName: "MINTIME" });
-  const maxTime = await client.readContract({ ...at, functionName: "MAXTIME" });
+  if (value(reads[3]) !== 18) throw new Error("The configured wrapped TRUST token has unsupported decimals.");
+  const minTime = value(reads[4]);
+  const maxTime = value(reads[5]);
   if (minTime <= 0n || maxTime < minTime) throw new Error("The lock duration settings are invalid.");
-  const paused = await client.readContract({ ...at, functionName: "paused" });
-  const unlocked = await client.readContract({ ...at, functionName: "unlocked" });
-  const timestamp = (await client.getBlock({ blockTag: "pending" })).timestamp;
+  const paused = value(reads[6]);
+  const unlocked = value(reads[7]);
+  const timestamp = value(reads[8]).timestamp;
   const state: LockState = {
     timestamp,
     minTime,
@@ -81,16 +99,22 @@ export async function readLockState(
     walletAllowed: true,
   };
   if (!account) return state;
-  state.nativeBalance = await client.getBalance({ address: account, blockTag: "pending" });
-  state.wrappedBalance = await client.readContract({ ...tokenAt, functionName: "balanceOf", args: [account] });
-  state.allowance = await client.readContract({
-    ...tokenAt,
-    functionName: "allowance",
-    args: [account, deployment.trustBonding],
-  });
-  [state.lockedAmount, state.lockEnd] = await client.readContract({ ...at, functionName: "locked", args: [account] });
-  state.votingPower = await client.readContract({ ...at, functionName: "balanceOf", args: [account] });
-  const accountCode = await client.getCode({ address: account, blockTag: "pending" });
+  let accountCode: Hex | undefined;
+  [
+    state.nativeBalance,
+    state.wrappedBalance,
+    state.allowance,
+    [state.lockedAmount, state.lockEnd],
+    state.votingPower,
+    accountCode,
+  ] = await Promise.all([
+    client.getBalance({ address: account, blockTag: "pending" }),
+    client.readContract({ ...tokenAt, functionName: "balanceOf", args: [account] }),
+    client.readContract({ ...tokenAt, functionName: "allowance", args: [account, deployment.trustBonding] }),
+    client.readContract({ ...at, functionName: "locked", args: [account] }),
+    client.readContract({ ...at, functionName: "balanceOf", args: [account] }),
+    client.getCode({ address: account, blockTag: "pending" }),
+  ]);
   // EIP-7702 delegation does not make an EOA a msg.sender != tx.origin caller.
   if (accountCode && accountCode !== "0x" && !accountCode.startsWith("0xef0100"))
     state.walletAllowed = await client.readContract({ ...at, functionName: "contracts_whitelist", args: [account] });
@@ -134,7 +158,7 @@ export function makeLockPlan(state: LockState, input: string, days: string): Loc
   }
   const wrapAmount = amount > state.wrappedBalance ? amount - state.wrappedBalance : 0n;
   if (wrapAmount >= state.nativeBalance)
-    throw new Error("Keep enough native tTRUST for wrapping and transaction fees.");
+    throw new Error(`Keep enough native ${deployment.nativeCurrency.symbol} for wrapping and transaction fees.`);
   const step = wrapAmount > 0n ? "wrap" : state.allowance < amount ? "approve" : "lock";
   // Match VotingEscrow's integer slope division before multiplying by time.
   const estimatedPower = ((state.lockedAmount + amount) / state.maxTime) * (unlockTime - state.timestamp);

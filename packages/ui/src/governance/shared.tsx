@@ -43,7 +43,7 @@ export function Wallet() {
           <span title={address}>{short(address)}</span>
           {chainId !== deployment.chainId && (
             <button disabled={switching} onClick={() => switchChain({ chainId: deployment.chainId })}>
-              Switch to testnet
+              Switch to {deployment.name}
             </button>
           )}
           <button onClick={() => disconnect()}>Disconnect</button>
@@ -77,7 +77,9 @@ export function GovernanceHeader({ page }: { page: "proposals" | "setup" | "crea
           Setup & lock TRUST
         </Link>
       </nav>
-      <div className="gov-network">Intuition testnet · 13579</div>
+      <div className="gov-network">
+        {deployment.name} · {deployment.chainId}
+      </div>
       <Wallet />
     </header>
   );

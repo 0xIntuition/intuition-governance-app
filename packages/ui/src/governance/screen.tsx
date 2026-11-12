@@ -1,7 +1,7 @@
 import { GovernanceHeader, Explorer, ErrorMessage, short, message, units, date } from "./shared";
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/router";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAccount, useWalletClient } from "wagmi";
 import { formatUnits, isAddressEqual, type Address, type Hex } from "viem";
 import { deployment, fixtureTransactions } from "./deployment";
@@ -13,8 +13,12 @@ import {
   fetchReceipt,
   governanceClient,
   governanceKey,
+  mergeProposalIds,
   metadataReference,
+  nextProposalIdPage,
+  proposalIndex,
   readProposal,
+  readProposalIdPage,
   readVotingPower,
   verifyDeployment,
   type Action,
@@ -22,6 +26,7 @@ import {
 } from "./rpc";
 
 const proposalKey = (id: string) => ["governance-proposal", ...governanceKey, id];
+const rowsPerPage = 6;
 
 export default function GovernanceScreen() {
   const router = useRouter();
@@ -91,41 +96,58 @@ export default function GovernanceScreen() {
         ),
     [history.data]
   );
-  const ids = useMemo(
-    () =>
-      [...new Set(events.flatMap((e) => (e.proposalId ? [e.proposalId] : [])))].sort((a, b) =>
-        BigInt(a) > BigInt(b) ? -1 : 1
-      ),
+  const importedIds = useMemo(
+    () => [...new Set(events.flatMap((e) => (e.proposalId ? [e.proposalId] : [])))],
     [events]
   );
   const selected =
     typeof router.query.proposal === "string" && /^\d{1,78}$/.test(router.query.proposal)
       ? router.query.proposal
       : undefined;
-  const currentPage = Math.min(page, Math.max(0, Math.ceil(ids.length / 6) - 1));
-  const visibleIds = ids.slice(currentPage * 6, currentPage * 6 + 6);
+  // The proposal list comes from the plugin's onchain index, read lazily in pages of IDs.
+  // Imported receipts only add event history; their IDs are merged in without duplicates.
+  const listing = useInfiniteQuery({
+    queryKey: ["governance-proposal-ids", ...governanceKey],
+    enabled: !selected && deploymentQuery.isSuccess,
+    initialPageParam: { page: 0, count: undefined as bigint | undefined },
+    queryFn: ({ pageParam }) => readProposalIdPage(pageParam.page, pageParam.count),
+    getNextPageParam: (last, _pages, param) => nextProposalIdPage(last, param.page),
+    retry: false,
+  });
+  const listedIds = useMemo(() => listing.data?.pages.flatMap((p) => p.ids) ?? [], [listing.data]);
+  const ids = useMemo(
+    () => mergeProposalIds(listedIds, importedIds, !listing.hasNextPage || listing.isError),
+    [listedIds, importedIds, listing.hasNextPage, listing.isError]
+  );
+  const { hasNextPage, isFetching: listingFetching, isError: listingError, fetchNextPage } = listing;
+  useEffect(() => {
+    // Read the next page of IDs only when the requested row page reaches past them.
+    if ((page + 1) * rowsPerPage > ids.length && hasNextPage && !listingFetching && !listingError) void fetchNextPage();
+  }, [page, ids.length, hasNextPage, listingFetching, listingError, fetchNextPage]);
+  const currentPage = Math.min(page, Math.max(0, Math.ceil(ids.length / rowsPerPage) - 1));
+  const visibleIds = ids.slice(currentPage * rowsPerPage, currentPage * rowsPerPage + rowsPerPage);
   const list = useQuery({
     queryKey: ["governance-list", ...governanceKey, visibleIds],
     enabled: !selected && deploymentQuery.isSuccess && visibleIds.length > 0,
-    queryFn: async () => {
-      const rows: Array<{ id: string; proposal?: Proposal; error?: string }> = [];
-      // Sequential, bounded pages avoid bursts against the public testnet RPC.
-      for (const id of visibleIds) {
-        try {
-          rows.push({
-            id,
-            proposal: await queryClient.fetchQuery({
-              queryKey: proposalKey(id),
-              queryFn: () => readProposal(BigInt(id)),
-              retry: false,
-            }),
-          });
-        } catch (e) {
-          rows.push({ id, error: message(e) });
-        }
-      }
-      return rows;
-    },
+    // One bounded page is read together. The client batches the concurrent reads into a
+    // few Multicall3 calls, so this is fewer RPC requests than reading rows one at a time.
+    queryFn: () =>
+      Promise.all(
+        visibleIds.map(async (id): Promise<{ id: string; proposal?: Proposal; error?: string }> => {
+          try {
+            return {
+              id,
+              proposal: await queryClient.fetchQuery({
+                queryKey: proposalKey(id),
+                queryFn: () => readProposal(BigInt(id)),
+                retry: false,
+              }),
+            };
+          } catch (e) {
+            return { id, error: message(e) };
+          }
+        })
+      ),
     retry: false,
   });
   const importHashes = async (values: readonly string[]) => {
@@ -202,7 +224,7 @@ export default function GovernanceScreen() {
             <p>Review onchain actions and veto with your veTRUST.</p>
           </div>
           <button
-            disabled={busy || deploymentQuery.isFetching || history.isFetching || list.isFetching}
+            disabled={busy || deploymentQuery.isFetching || listing.isFetching || history.isFetching || list.isFetching}
             onClick={() => void refresh()}
           >
             Refresh from chain
@@ -227,7 +249,10 @@ export default function GovernanceScreen() {
           <>
             <section className="app-surface gov-import" aria-labelledby="import-title">
               <h2 id="import-title">Import a transaction</h2>
-              <p>Paste a transaction hash to load its governance events. History is saved only in this browser.</p>
+              <p>
+                Paste a transaction hash to load its governance events, such as the creator, vetoes and execution.
+                History is saved only in this browser.
+              </p>
               <form onSubmit={onSubmit}>
                 <label htmlFor="transaction-hash">Transaction hash</label>
                 <div className="gov-input-row">
@@ -254,30 +279,46 @@ export default function GovernanceScreen() {
               <p id="import-help">
                 Only receipts from this deployment are accepted. Importing does not ask your wallet to sign.
               </p>
-              <button
-                disabled={busy || !deploymentQuery.isSuccess}
-                onClick={() => void importHashes(fixtureTransactions)}
-              >
-                Import testnet fixtures
-              </button>
+              {fixtureTransactions.length > 0 && (
+                <button
+                  disabled={busy || !deploymentQuery.isSuccess}
+                  onClick={() => void importHashes(fixtureTransactions)}
+                >
+                  Import testnet fixtures
+                </button>
+              )}
               <ErrorMessage error={importError} />
               <p role="status" aria-live="polite">
-                {busy ? "Working with the testnet RPC…" : notice}
+                {busy ? "Working with the RPC…" : notice}
               </p>
             </section>
             <section className="gov-proposals" aria-labelledby="proposals-title">
-              <h2 id="proposals-title">Imported proposals</h2>
-              <p>Veto totals and status come from the contracts. Imported event history may be incomplete.</p>
-              {!ready || history.isFetching || list.isFetching ? (
+              <h2 id="proposals-title">Proposals</h2>
+              <p>
+                The list, veto totals and status come from the contracts. Event history comes only from transactions
+                imported into this browser.
+              </p>
+              {!ready || listing.isFetching || history.isFetching || list.isFetching ? (
                 <p role="status">Loading and verifying proposal data…</p>
               ) : null}
-              {ready && !history.isFetching && !ids.length && (
-                <p>No proposals imported in this browser. Import a transaction or load the testnet fixtures above.</p>
+              {listing.isError && (
+                <div className="gov-error" role="alert">
+                  <p>
+                    Proposals could not be loaded from the RPC. {message(listing.error)}
+                    {ids.length > 0 ? " Some proposals may be missing below." : ""}
+                  </p>
+                  <button disabled={listing.isFetching} onClick={() => void listing.refetch()}>
+                    Retry loading proposals
+                  </button>
+                </div>
+              )}
+              {listing.isSuccess && !listing.isFetching && ready && !history.isFetching && !ids.length && (
+                <p>No proposals have been created yet.</p>
               )}
               <div className="app-surface gov-rows">
                 {visibleIds.map((id) => {
                   const row = list.data?.find((r) => r.id === id);
-                  const index = BigInt(id) & ((1n << 64n) - 1n);
+                  const index = proposalIndex(BigInt(id));
                   return (
                     <div className="gov-row" key={id}>
                       <div>
@@ -295,13 +336,20 @@ export default function GovernanceScreen() {
                   );
                 })}
               </div>
-              {ids.length > 6 && (
+              {(ids.length > rowsPerPage || hasNextPage) && (
                 <nav aria-label="Proposal pages" className="gov-pagination">
                   <button disabled={currentPage === 0} onClick={() => setPage(currentPage - 1)}>
                     Previous
                   </button>
                   <span>Page {currentPage + 1}</span>
-                  <button disabled={(currentPage + 1) * 6 >= ids.length} onClick={() => setPage(currentPage + 1)}>
+                  <button
+                    disabled={
+                      ((currentPage + 1) * rowsPerPage >= ids.length && !hasNextPage) ||
+                      listingFetching ||
+                      currentPage < page
+                    }
+                    onClick={() => setPage(currentPage + 1)}
+                  >
                     Next
                   </button>
                 </nav>
@@ -342,7 +390,9 @@ export default function GovernanceScreen() {
                 </button>
               </div>
             ))}
-            <button onClick={() => setConfirmClear(true)}>Clear local history</button>
+            <button className="gov-history-clear" onClick={() => setConfirmClear(true)}>
+              Clear local history
+            </button>
             {confirmClear && (
               <div className="gov-actions">
                 <p>Remove all imported history from this browser?</p>
@@ -367,7 +417,7 @@ export default function GovernanceScreen() {
         )}
       </main>
       <footer className="gov-footer">
-        <p>Intuition testnet. Local history is not a complete proposal registry.</p>
+        <p>{deployment.name}. Imported event history is stored only in this browser.</p>
         <a
           href="https://github.com/0xIntuition/intuition-contracts-v2-governance"
           target="_blank"
@@ -421,7 +471,7 @@ function ProposalDetail({
     setTxHash(undefined);
     try {
       if ((await wallet.getChainId()) !== deployment.chainId)
-        throw new Error("Switch your wallet to Intuition testnet first.");
+        throw new Error(`Switch your wallet to ${deployment.name} first.`);
       if (!isAddressEqual(wallet.account.address, address))
         throw new Error("Your wallet account changed. Review the proposal again.");
       await verifyDeployment();
@@ -469,7 +519,7 @@ function ProposalDetail({
       setPending(false);
     }
   };
-  if (proposal.isPending) return <p role="status">Loading proposal from the testnet RPC…</p>;
+  if (proposal.isPending) return <p role="status">Loading proposal from the RPC…</p>;
   if (!proposal.data) return <ErrorMessage error={proposal.error} />;
   const p = proposal.data;
   const creator = events.find((e) => e.name === "ProposalCreated" && e.proposalId === id);
@@ -491,7 +541,7 @@ function ProposalDetail({
           {creator?.creator ? (
             <Explorer value={creator.creator}>
               {isAddressEqual(creator.creator as Address, deployment.manager)
-                ? "Manager (testnet EOA)"
+                ? `Manager (${deployment.managerLabel})`
                 : short(creator.creator)}
             </Explorer>
           ) : (
@@ -581,7 +631,7 @@ function ProposalDetail({
             )}
           </>
         )}
-        {chainId && chainId !== deployment.chainId && <p>Switch to Intuition testnet to submit a transaction.</p>}
+        {chainId && chainId !== deployment.chainId && <p>Switch to {deployment.name} to submit a transaction.</p>}
         <div className="gov-actions">
           <button
             className={!reviewAction && voting.data?.canVeto ? "gov-primary" : undefined}
@@ -710,7 +760,9 @@ function ActionView({
           <Explorer value={action.to} />
         </dd>
         <dt>Value</dt>
-        <dd>{formatUnits(action.value, 18)} tTRUST</dd>
+        <dd>
+          {formatUnits(action.value, deployment.nativeCurrency.decimals)} {deployment.nativeCurrency.symbol}
+        </dd>
         {decoded.proxy && (
           <>
             <dt>Proxy</dt>
