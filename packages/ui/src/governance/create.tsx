@@ -164,7 +164,7 @@ export default function CreateProposalPage() {
   return (
     <div className="governance">
       <Head>
-        <title>New proposal · Intuition governance</title>
+        <title>New Proposal · Intuition Governance</title>
       </Head>
       <a className="gov-skip" href="#create-content">
         Skip to proposal form

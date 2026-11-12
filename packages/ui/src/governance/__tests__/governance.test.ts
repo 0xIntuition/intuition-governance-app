@@ -138,6 +138,7 @@ describe("voting and decoding", () => {
   it("pins confirmed state to one block and evaluates execution at pending", async () => {
     const snapshot = 1793810000n;
     const client = {
+      getBlockNumber: vi.fn().mockResolvedValue(123n),
       getBlock: vi.fn().mockResolvedValue({ number: 123n, timestamp: snapshot + 10n }),
       readContract: vi.fn().mockImplementation(async ({ functionName }: { functionName: string }) => {
         if (functionName === "getProposal")

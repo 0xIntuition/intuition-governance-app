@@ -28,7 +28,7 @@ export default function SetupPage() {
   return (
     <div className="governance">
       <Head>
-        <title>Setup & lock TRUST · Intuition governance</title>
+        <title>Setup & Lock TRUST · Intuition Governance</title>
       </Head>
       <a className="gov-skip" href="#setup-content">
         Skip to setup
@@ -266,8 +266,8 @@ function LockAndSettings() {
               </dl>
             )}
             <p>
-              New locks and additions only count toward proposals with later snapshots. They cannot give you veto power
-              on the existing fixture proposals. <Link href="/">View proposals</Link>
+              New locks and additions only count toward proposals created after them. They cannot give you veto power on
+              proposals that already exist. <Link href="/">View proposals</Link>
             </p>
             {state.paused && (
               <p role="status">
