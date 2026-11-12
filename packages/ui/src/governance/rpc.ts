@@ -14,49 +14,56 @@ import { deployment, governanceChain } from "./deployment";
 import { daoPermissionsAbi, pluginAbi, proposerPermissionId, proxyAdminAbi, timelockAbi, votesAbi } from "./contracts";
 import { normalizeReceipt, parseTransactionHash, type StoredReceipt } from "./events";
 
+// Concurrent contract reads at the same block are sent as one Multicall3 call.
 export const governanceClient = createPublicClient({
   chain: governanceChain,
+  batch: { multicall: true },
   transport: http(deployment.rpcUrl, { retryCount: 2, retryDelay: 1500, timeout: 15_000 }),
 });
 export type GovernanceClient = typeof governanceClient;
 export const governanceKey = [deployment.chainId, deployment.dao, deployment.plugin] as const;
 
-export async function verifyDeployment(client: GovernanceClient = governanceClient) {
+// Chain, contract code and wiring are fixed for a deployment, so they are checked once per
+// page session. A failed check is not cached, so the next call retries it.
+const verifiedIdentity = new WeakMap<GovernanceClient, Promise<void>>();
+async function checkIdentity(client: GovernanceClient) {
   if ((await client.getChainId()) !== deployment.chainId)
     throw new Error("The RPC is connected to a different chain. Check NEXT_PUBLIC_RPC_URL.");
-  for (const address of [deployment.dao, deployment.plugin, deployment.adapter, deployment.upgradesTimelock]) {
-    const code = await client.getCode({ address });
-    if (!code || code === "0x") throw new Error(`No contract code at ${address}. Transactions are disabled.`);
-  }
-  const dao = await client.readContract({ address: deployment.plugin, abi: pluginAbi, functionName: "dao" });
-  const adapter = await client.readContract({
-    address: deployment.plugin,
-    abi: pluginAbi,
-    functionName: "votingToken",
-  });
-  const source = await client.readContract({
-    address: deployment.adapter,
-    abi: votesAbi,
-    functionName: "trustBonding",
-  });
+  const addresses = [deployment.dao, deployment.plugin, deployment.adapter, deployment.upgradesTimelock];
+  const [codes, dao, adapter, source] = await Promise.all([
+    Promise.all(addresses.map((address) => client.getCode({ address }))),
+    client.readContract({ address: deployment.plugin, abi: pluginAbi, functionName: "dao" }),
+    client.readContract({ address: deployment.plugin, abi: pluginAbi, functionName: "votingToken" }),
+    client.readContract({ address: deployment.adapter, abi: votesAbi, functionName: "trustBonding" }),
+  ]);
+  const missing = addresses.find((_, index) => !codes[index] || codes[index] === "0x");
+  if (missing) throw new Error(`No contract code at ${missing}. Transactions are disabled.`);
   if (
     !isAddressEqual(dao, deployment.dao) ||
     !isAddressEqual(adapter, deployment.adapter) ||
     !isAddressEqual(source, deployment.trustBonding)
   )
     throw new Error("The governance contracts do not match this deployment. Transactions are disabled.");
-  const settings = await client.readContract({
-    address: deployment.plugin,
-    abi: pluginAbi,
-    functionName: "governanceSettings",
-  });
+}
+function verifyIdentity(client: GovernanceClient) {
+  let check = verifiedIdentity.get(client);
+  if (!check) {
+    check = checkIdentity(client);
+    verifiedIdentity.set(client, check);
+    check.catch(() => verifiedIdentity.delete(client));
+  }
+  return check;
+}
+
+// Settings and the timelock delay can change through governance, so they are read fresh.
+export async function verifyDeployment(client: GovernanceClient = governanceClient) {
+  const [, settings, timelockDelay] = await Promise.all([
+    verifyIdentity(client),
+    client.readContract({ address: deployment.plugin, abi: pluginAbi, functionName: "governanceSettings" }),
+    client.readContract({ address: deployment.upgradesTimelock, abi: timelockAbi, functionName: "getMinDelay" }),
+  ]);
   if (!settings[5])
     throw new Error("This deployment requires an unsupported L2 voting path. Transactions are disabled.");
-  const timelockDelay = await client.readContract({
-    address: deployment.upgradesTimelock,
-    abi: timelockAbi,
-    functionName: "getMinDelay",
-  });
   return { settings, timelockDelay };
 }
 
@@ -90,18 +97,29 @@ export function metadataReference(value: Hex) {
 }
 export async function readProposal(id: bigint, client: GovernanceClient = governanceClient) {
   if (id < 0n || id >= 2n ** 256n) throw new Error("Invalid proposal ID.");
-  const block = await client.getBlock();
+  // The block number is cached for a few seconds, so proposals loaded together read the
+  // same block and their calls share one multicall.
+  const block = await client.getBlock({ blockNumber: await client.getBlockNumber() });
   const at = { address: deployment.plugin, abi: pluginAbi, blockNumber: block.number } as const;
-  const result = await client.readContract({ ...at, functionName: "getProposal", args: [id] });
+  const [proposal, vetoRead, executableRead] = await Promise.allSettled([
+    client.readContract({ ...at, functionName: "getProposal", args: [id] }),
+    client.readContract({ ...at, functionName: "isMinVetoRatioReached", args: [id] }),
+    client.readContract({
+      address: deployment.plugin,
+      abi: pluginAbi,
+      blockTag: "pending",
+      functionName: "canExecute",
+      args: [id],
+    }),
+  ]);
+  // Check existence first, so an unknown ID reports that rather than a revert from the other reads.
+  if (proposal.status === "rejected") throw proposal.reason;
+  const result = proposal.value;
   if (!result[2].snapshotTimestamp) throw new Error("This proposal does not exist on the configured deployment.");
-  const vetoed = await client.readContract({ ...at, functionName: "isMinVetoRatioReached", args: [id] });
-  const executable = await client.readContract({
-    address: deployment.plugin,
-    abi: pluginAbi,
-    blockTag: "pending",
-    functionName: "canExecute",
-    args: [id],
-  });
+  if (vetoRead.status === "rejected") throw vetoRead.reason;
+  if (executableRead.status === "rejected") throw executableRead.reason;
+  const vetoed = vetoRead.value;
+  const executable = executableRead.value;
   const supply = await client.readContract({
     address: deployment.adapter,
     abi: votesAbi,
@@ -179,32 +197,34 @@ export function mergeProposalIds(listed: readonly string[], imported: readonly s
 }
 export async function readVotingPower(proposal: Proposal, account: Address) {
   const at = { address: deployment.adapter, abi: votesAbi, blockNumber: proposal.blockNumber } as const;
-  const snapshot = await governanceClient.readContract({
-    ...at,
-    functionName: "getPastVotes",
-    args: [account, proposal.result[2].snapshotTimestamp],
-  });
-  const current = await governanceClient.readContract({
-    address: deployment.adapter,
-    abi: votesAbi,
-    blockTag: "pending",
-    functionName: "getVotes",
-    args: [account],
-  });
-  const canVeto = await governanceClient.readContract({
-    address: deployment.plugin,
-    abi: pluginAbi,
-    functionName: "canVeto",
-    args: [proposal.id, account],
-    blockTag: "pending",
-  });
-  const hasVetoed = await governanceClient.readContract({
-    address: deployment.plugin,
-    abi: pluginAbi,
-    functionName: "hasVetoed",
-    args: [proposal.id, account],
-    blockNumber: proposal.blockNumber,
-  });
+  const [snapshot, current, canVeto, hasVetoed] = await Promise.all([
+    governanceClient.readContract({
+      ...at,
+      functionName: "getPastVotes",
+      args: [account, proposal.result[2].snapshotTimestamp],
+    }),
+    governanceClient.readContract({
+      address: deployment.adapter,
+      abi: votesAbi,
+      blockTag: "pending",
+      functionName: "getVotes",
+      args: [account],
+    }),
+    governanceClient.readContract({
+      address: deployment.plugin,
+      abi: pluginAbi,
+      functionName: "canVeto",
+      args: [proposal.id, account],
+      blockTag: "pending",
+    }),
+    governanceClient.readContract({
+      address: deployment.plugin,
+      abi: pluginAbi,
+      functionName: "hasVetoed",
+      args: [proposal.id, account],
+      blockNumber: proposal.blockNumber,
+    }),
+  ]);
   return { snapshot, current, canVeto, hasVetoed };
 }
 

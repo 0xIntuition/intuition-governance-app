@@ -129,25 +129,25 @@ export default function GovernanceScreen() {
   const list = useQuery({
     queryKey: ["governance-list", ...governanceKey, visibleIds],
     enabled: !selected && deploymentQuery.isSuccess && visibleIds.length > 0,
-    queryFn: async () => {
-      const rows: Array<{ id: string; proposal?: Proposal; error?: string }> = [];
-      // Sequential, bounded pages avoid bursts against the public RPC.
-      for (const id of visibleIds) {
-        try {
-          rows.push({
-            id,
-            proposal: await queryClient.fetchQuery({
-              queryKey: proposalKey(id),
-              queryFn: () => readProposal(BigInt(id)),
-              retry: false,
-            }),
-          });
-        } catch (e) {
-          rows.push({ id, error: message(e) });
-        }
-      }
-      return rows;
-    },
+    // One bounded page is read together. The client batches the concurrent reads into a
+    // few Multicall3 calls, so this is fewer RPC requests than reading rows one at a time.
+    queryFn: () =>
+      Promise.all(
+        visibleIds.map(async (id): Promise<{ id: string; proposal?: Proposal; error?: string }> => {
+          try {
+            return {
+              id,
+              proposal: await queryClient.fetchQuery({
+                queryKey: proposalKey(id),
+                queryFn: () => readProposal(BigInt(id)),
+                retry: false,
+              }),
+            };
+          } catch (e) {
+            return { id, error: message(e) };
+          }
+        })
+      ),
     retry: false,
   });
   const importHashes = async (values: readonly string[]) => {
