@@ -1,9 +1,9 @@
 import type { GetStaticPaths, GetStaticProps } from "next";
-import { useRouter } from "next/router";
 import GovernanceScreen from "@/governance/screen";
-import Link from "next/link";
 
-// The static export pre-renders the deployment's only plugin page.
+// The static export pre-renders the deployment's only plugin page. Any other ID is a 404,
+// so the page renders the governance screen directly. Waiting for `router.isReady` would
+// pre-render an empty page that then mismatches the first client render.
 export const getStaticPaths: GetStaticPaths = async () => ({
   paths: [{ params: { id: "community-proposals" } }],
   fallback: false,
@@ -12,15 +12,5 @@ export const getStaticPaths: GetStaticPaths = async () => ({
 export const getStaticProps: GetStaticProps = async () => ({ props: {} });
 
 export default function PluginPage() {
-  const router = useRouter();
-  if (!router.isReady) return null;
-  if (router.query.id !== "community-proposals")
-    return (
-      <main className="governance">
-        <h1>Page unavailable</h1>
-        <p>This deployment has one governance plugin.</p>
-        <Link href="/">View governance</Link>
-      </main>
-    );
   return <GovernanceScreen />;
 }
