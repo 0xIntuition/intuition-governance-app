@@ -2,6 +2,7 @@ name: DAO UI CI/CD
 
 on:
     push:
+        branches: [main]
         paths:
           - "packages/ui/**"
           - ".github/workflows/dao-ui.yml"
