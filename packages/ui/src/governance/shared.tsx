@@ -36,11 +36,12 @@ export function Wallet() {
   const { connectors, connect, isPending, error } = useConnect();
   const { disconnect } = useDisconnect();
   const { switchChain, isPending: switching, error: switchError } = useSwitchChain();
-  // One entry point: a wallet the browser announces (EIP-6963), else the legacy browser
-  // wallet, else WalletConnect when configured.
+  // One entry point: the browser's default wallet (window.ethereum, the extension the user
+  // chose as default), else a wallet that only announces itself (EIP-6963), else WalletConnect.
+  // Announcement order varies between page loads, so it never decides between extensions.
   const walletConnector = () =>
-    connectors.find((c) => c.type === "injected" && c.id !== "injected") ||
     (typeof window !== "undefined" && "ethereum" in window && connectors.find((c) => c.id === "injected")) ||
+    connectors.find((c) => c.type === "injected" && c.id !== "injected") ||
     connectors.find((c) => c.type === "walletConnect") ||
     connectors[0];
   return (

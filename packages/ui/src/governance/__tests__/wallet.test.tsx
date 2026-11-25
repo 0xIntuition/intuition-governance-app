@@ -17,6 +17,7 @@ vi.mock("wagmi", () => ({
 const injected = { uid: "1", id: "injected", type: "injected", name: "Injected" };
 const walletConnect = { uid: "2", id: "walletConnect", type: "walletConnect", name: "WalletConnect" };
 const rabby = { uid: "3", id: "io.rabby", type: "injected", name: "Rabby Wallet" };
+const phantom = { uid: "4", id: "app.phantom", type: "injected", name: "Phantom" };
 let root: Root;
 let container: HTMLDivElement;
 beforeEach(() => {
@@ -39,16 +40,15 @@ const connectOnce = () => {
   return mocks.connect.mock.calls[0][0].connector;
 };
 
-it("shows one button and prefers a wallet the browser announces", () => {
-  mocks.connectors = [injected, walletConnect, rabby];
-  vi.stubGlobal("ethereum", {});
-  expect(connectOnce()).toBe(rabby);
-});
-
-it("uses the legacy browser wallet when none is announced", () => {
-  mocks.connectors = [injected, walletConnect];
+it("shows one button and uses the browser's default wallet over announced ones", () => {
+  mocks.connectors = [injected, phantom, walletConnect, rabby];
   vi.stubGlobal("ethereum", {});
   expect(connectOnce()).toBe(injected);
+});
+
+it("uses an announced wallet when the browser has no default wallet", () => {
+  mocks.connectors = [injected, rabby, walletConnect];
+  expect(connectOnce()).toBe(rabby);
 });
 
 it("falls back to WalletConnect when the browser has no wallet", () => {
