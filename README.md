@@ -25,7 +25,9 @@ pnpm install --frozen-lockfile
 pnpm --filter dao-ui dev
 ```
 
-Builds target Intuition mainnet (chain 1155). Set `NEXT_PUBLIC_GOVERNANCE_NETWORK=testnet` for the testnet deployment (chain 13579). On testnet, **Import testnet fixtures** loads the deployed sample proposals in executed, vetoed, active and executable states. Importing only reads chain data; veto and execution need a connected wallet on the same network and an explicit confirmation.
+Builds target Intuition mainnet (chain 1155). Set `NEXT_PUBLIC_GOVERNANCE_NETWORK=testnet` for the testnet deployment (chain 13579). Proposals, veto totals, status and the creator are read from chain; the creator comes from the plugin's `ProposalCreated` log, read from the few blocks at the proposal's creation timestamp (its snapshot plus one second), found by a binary search over block timestamps. Veto and execution need a connected wallet on the same network and an explicit confirmation.
+
+Manual transaction import is off by default. Set `NEXT_PUBLIC_GOVERNANCE_IMPORT=true` to show the import form and the browser-local activity history. On testnet, **Import testnet fixtures** then loads the deployed sample proposals in executed, vetoed, active and executable states. Importing only reads chain data.
 
 **Setup & lock TRUST** (`/setup`) shows the configured contracts, including MultiVault and TrustBonding, and guides a funded wallet through wrapping TRUST, approving the amount and locking it. Existing locks can receive additions; expired locks can be withdrawn as wrapped TRUST.
 

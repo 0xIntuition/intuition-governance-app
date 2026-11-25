@@ -59,6 +59,10 @@ export const network: keyof typeof deployments =
 
 export const deployment = deployments[network];
 
+// Manual transaction import and the browser-local activity it feeds. Off unless the build
+// sets NEXT_PUBLIC_GOVERNANCE_IMPORT=true; the site reads everything it shows from chain.
+export const importEnabled = process.env.NEXT_PUBLIC_GOVERNANCE_IMPORT === "true";
+
 export const governanceChain = defineChain({
   id: deployment.chainId,
   name: deployment.name,

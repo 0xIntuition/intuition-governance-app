@@ -36,6 +36,14 @@ export function Wallet() {
   const { connectors, connect, isPending, error } = useConnect();
   const { disconnect } = useDisconnect();
   const { switchChain, isPending: switching, error: switchError } = useSwitchChain();
+  // One entry point: the browser's default wallet (window.ethereum, the extension the user
+  // chose as default), else a wallet that only announces itself (EIP-6963), else WalletConnect.
+  // Announcement order varies between page loads, so it never decides between extensions.
+  const walletConnector = () =>
+    (typeof window !== "undefined" && "ethereum" in window && connectors.find((c) => c.id === "injected")) ||
+    connectors.find((c) => c.type === "injected" && c.id !== "injected") ||
+    connectors.find((c) => c.type === "walletConnect") ||
+    connectors[0];
   return (
     <div className="gov-wallet">
       {isConnected && address ? (
@@ -49,11 +57,9 @@ export function Wallet() {
           <button onClick={() => disconnect()}>Disconnect</button>
         </>
       ) : (
-        connectors.map((connector) => (
-          <button key={connector.uid} disabled={isPending} onClick={() => connect({ connector })}>
-            Connect {connector.name === "Injected" ? "wallet" : connector.name}
-          </button>
-        ))
+        <button disabled={isPending || !connectors.length} onClick={() => connect({ connector: walletConnector() })}>
+          Connect wallet
+        </button>
       )}
       <ErrorMessage error={error || switchError} />
     </div>

@@ -10,8 +10,17 @@ const mocks = vi.hoisted(() => ({
   readProposal: vi.fn(),
   receipts: [] as { transactionHash: string }[],
   importedIds: [] as string[],
+  importEnabled: false,
+  query: {} as Record<string, string>,
+  readCreator: vi.fn(),
 }));
-vi.mock("next/router", () => ({ useRouter: () => ({ query: {}, push: vi.fn() }) }));
+vi.mock("next/router", () => ({ useRouter: () => ({ query: mocks.query, push: vi.fn() }) }));
+vi.mock("../deployment", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../deployment")>()),
+  get importEnabled() {
+    return mocks.importEnabled;
+  },
+}));
 vi.mock("wagmi", () => ({ useAccount: () => ({}), useWalletClient: () => ({}) }));
 vi.mock("../shared", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../shared")>()),
@@ -39,6 +48,7 @@ vi.mock("../rpc", async (importOriginal) => ({
   fetchReceipt: vi.fn(async (hash: string) => ({ transactionHash: hash })),
   readProposalIdPage: mocks.readPage,
   readProposal: mocks.readProposal,
+  readProposalCreator: mocks.readCreator,
 }));
 
 const idAt = (index: number) => ((1_793_819_956n << 128n) | (1_793_820_256n << 64n) | BigInt(index)).toString();
@@ -59,6 +69,9 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.receipts = [];
   mocks.importedIds = [];
+  mocks.importEnabled = false;
+  mocks.query = {};
+  mocks.readCreator.mockResolvedValue(null);
   mocks.readProposal.mockImplementation(async (id: bigint) => ({
     id,
     result: [true, false, {}, 0n, "0x", [{}], 0n],
@@ -115,6 +128,7 @@ it("lists a single onchain proposal for a browser with no imports", async () => 
   render();
   await until(() => expect(container.textContent).toContain("1 onchain action"));
   expect(rows()).toEqual(["Proposal 0"]);
+  expect(container.textContent).not.toMatch(/unavailable/i);
   expect(container.textContent).not.toContain("No proposals have been created yet.");
 });
 
@@ -143,6 +157,7 @@ it("pages through many proposals and reads more IDs only when needed", async () 
 });
 
 it("shows an imported proposal once when the chain also lists it", async () => {
+  mocks.importEnabled = true;
   chainWith(3);
   mocks.receipts = [{ transactionHash: "0x01" }];
   mocks.importedIds = [idAt(1)];
@@ -161,12 +176,14 @@ it("shows an RPC failure as a recoverable error, never as an empty list", async 
   );
   expect(container.textContent).not.toContain("No proposals have been created yet.");
   expect(rows()).toEqual([]);
+  expect(container.textContent).not.toMatch(/unavailable/i);
   await act(async () => button("Retry loading proposals").click());
   await until(() => expect(rows()).toEqual(["Proposal 1", "Proposal 0"]));
   expect(container.textContent).not.toContain("could not be loaded");
 });
 
 it("keeps imported proposals visible while the chain listing fails", async () => {
+  mocks.importEnabled = true;
   mocks.readPage.mockRejectedValue(new Error("HTTP request failed."));
   mocks.receipts = [{ transactionHash: "0x01" }];
   mocks.importedIds = [idAt(4)];
@@ -174,4 +191,73 @@ it("keeps imported proposals visible while the chain listing fails", async () =>
   await until(() => expect(container.textContent).toContain("Some proposals may be missing below."));
   expect(rows()).toEqual(["Proposal 4"]);
   expect(container.textContent).not.toContain("No proposals have been created yet.");
+});
+
+it("shows nothing about importing when the import flag is off", async () => {
+  chainWith(1);
+  mocks.receipts = [{ transactionHash: "0x01" }];
+  mocks.importedIds = [idAt(7)];
+  render();
+  await until(() => expect(rows()).toEqual(["Proposal 0"]));
+  expect(container.textContent).not.toMatch(/import/i);
+  expect(container.querySelector("#transaction-hash")).toBeNull();
+});
+
+it("shows the import form and fixtures when the import flag is on", async () => {
+  mocks.importEnabled = true;
+  chainWith(1);
+  render();
+  await until(() => expect(rows()).toEqual(["Proposal 0"]));
+  expect(container.textContent).toContain("Import a transaction");
+  expect(button("Import testnet fixtures")).toBeDefined();
+});
+
+const creator = "0x1234567890AbcdEF1234567890aBcdef12345678";
+function detail(metadata: string) {
+  const id = idAt(3);
+  mocks.query = { proposal: id };
+  mocks.readProposal.mockResolvedValue({
+    id: BigInt(id),
+    result: [true, false, { vetoEndDate: 1n, snapshotTimestamp: 1n, minVetoRatio: 100000 }, 0n, metadata, [], 0n],
+    status: "Active",
+    supply: 10n,
+    threshold: 1n,
+    executable: false,
+    blockNumber: 5n,
+    blockTimestamp: 1n,
+  });
+  render();
+}
+
+it("shows the creator read from chain on the proposal page", async () => {
+  mocks.readCreator.mockResolvedValue(creator);
+  detail("0x");
+  await until(() => expect(container.textContent).toContain("Proposed by"));
+  expect(container.querySelector(`a[title="${creator}"]`)).not.toBeNull();
+  expect(mocks.readCreator).toHaveBeenCalledWith(BigInt(idAt(3)), 1n);
+});
+
+it("hides the creator row, metadata and imported activity when none are available", async () => {
+  detail("0x");
+  await until(() => expect(container.textContent).toContain("Onchain actions"));
+  await until(() => expect(mocks.readCreator).toHaveBeenCalled());
+  expect(container.textContent).not.toContain("Proposed by");
+  expect(container.textContent).not.toContain("Proposal description");
+  expect(container.textContent).not.toMatch(/not imported|unavailable|Imported activity/i);
+});
+
+it("links an ipfs metadata reference through a public gateway", async () => {
+  detail("0x697066733a2f2f62616679"); // "ipfs://bafy"
+  await until(() => expect(container.textContent).toContain("Proposal description"));
+  const link = Array.from(container.querySelectorAll("a")).find((a) => a.textContent === "ipfs://bafy");
+  expect(link?.getAttribute("href")).toBe("https://ipfs.io/ipfs/bafy");
+});
+
+it("shows a failed row read as its error, with no status badge", async () => {
+  chainWith(1);
+  mocks.readProposal.mockRejectedValue(new Error("Row read failed."));
+  render();
+  await until(() => expect(container.textContent).toContain("Row read failed."));
+  expect(container.querySelector(".gov-rows .gov-status")).toBeNull();
+  expect(container.textContent).not.toMatch(/unavailable/i);
 });

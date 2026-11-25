@@ -11,6 +11,8 @@ Source: the user's direction on 2026-11-04 and the [frontend project](https://li
 - Use the deployed optimistic plugin and veTRUST voting adapter. Keep existing contract permissions authoritative.
 - Mainnet proposal creation belongs to the manager Safe; the application builds/simulates/exports its transaction. The authorized testnet proposer can submit directly. Veto and eligible execution remain holder/public interactions as specified by the contracts.
 - Import known transactions; do not build global discovery, a background indexer, or an unbounded historical RPC scanner.
+- The proposal creator is read without a scan: the plugin sets the snapshot to the creation block timestamp minus one, so a binary search over block timestamps finds the creation blocks and one `eth_getLogs` over them, filtered on the indexed proposal ID, returns the creator. If the lookup fails, the creator is not shown.
+- Manual import and browser-local activity are hidden unless the build sets `NEXT_PUBLIC_GOVERNANCE_IMPORT=true`.
 - Local history is specific to this browser and deployment. Missing imported events do not mean nothing happened on chain.
 - Current proposal state, voting power, permissions, veto eligibility, and execution eligibility come from fresh contract reads. Stored events do not authorize transactions.
 - Reuse viem/wagmi and the existing application where practical. Keep the receipt decoder, local store, and contract reads small and explicit.
@@ -45,11 +47,11 @@ Cached receipts are reproducible from transaction hashes, not a trusted database
 
 ## Current state and history
 
-Lists show imported proposals with local pagination/filtering and an explicit local-history explanation. An empty local store offers transaction import; it must not claim the DAO has no proposals. Existing bounded `proposalCount` / `proposalIds` / `getProposal` reads may remain useful for known state, without requiring automatic discovery or implying complete event history. A direct proposal link may read known onchain state, but must explain when receipt history is missing in this browser.
+Lists come from the bounded `proposalCount` / `proposalIds` / `getProposal` reads. With the import flag on, imported proposals are merged in and an explicit local-history explanation is shown. A direct proposal link reads onchain state; the creator comes from the bounded log lookup above and is hidden when it cannot be read.
 
 Details combine imported evidence with `getProposal` and deployment-supported reads. The imported creator is the event creator, not automatically the outer transaction sender. Veto totals and executed status come from the contract; imported voter/executor history can be incomplete. Never infer full voter participation from the imported subset.
 
-Before veto or execute, refresh chain-specific eligibility and simulate the intended call. On confirmation, import the receipt and invalidate affected reads. On RPC failure, show unavailable/stale state rather than enabling an action from cached eligibility. Wallet chain and deployment identity must agree.
+Before veto or execute, refresh chain-specific eligibility and simulate the intended call. On confirmation, invalidate affected reads; with the import flag on, also import the receipt. On RPC failure, show unavailable/stale state rather than enabling an action from cached eligibility. Wallet chain and deployment identity must agree.
 
 ## Metadata boundary
 

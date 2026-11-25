@@ -14,6 +14,14 @@ const mocks = vi.hoisted(() => ({
   transaction: vi.fn(),
   receipt: vi.fn(),
   save: vi.fn(),
+  invalidate: vi.fn(),
+  importEnabled: true,
+}));
+vi.mock("../deployment", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../deployment")>()),
+  get importEnabled() {
+    return mocks.importEnabled;
+  },
 }));
 vi.mock("wagmi", () => ({
   useAccount: () => mocks.account,
@@ -27,6 +35,7 @@ vi.mock("wagmi", () => ({
   }),
 }));
 vi.mock("@tanstack/react-query", () => ({
+  useQueryClient: () => ({ invalidateQueries: mocks.invalidate }),
   useQuery: ({ queryKey }: { queryKey: string[] }) => ({
     data: queryKey[0] === "proposal-config" ? { settings: [200000, 120] } : mocks.permission,
     isSuccess: true,
@@ -71,6 +80,7 @@ beforeEach(() => {
   });
   mocks.receipt.mockResolvedValue({ transactionHash: hash });
   mocks.save.mockImplementation(() => {});
+  mocks.importEnabled = true;
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
@@ -108,6 +118,14 @@ it("uses the confirmed event ID and keeps success visible when local storage fai
   expect(container.querySelector('a[href="/?proposal=123"]')).toBeNull();
   expect(container.textContent).toContain("Storage unavailable");
   expect(container.textContent).toContain("proposal was created successfully");
+});
+it("does not touch local history when import is off", async () => {
+  mocks.importEnabled = false;
+  await submit();
+  expect(container.querySelector('a[href="/?proposal=999"]')).not.toBeNull();
+  expect(mocks.save).not.toHaveBeenCalled();
+  expect(mocks.invalidate).toHaveBeenCalledWith({ queryKey: ["governance-proposal-ids"] });
+  expect(container.textContent).not.toMatch(/import/i);
 });
 it("keeps a timed-out transaction available for confirmation without submitting twice", async () => {
   mocks.wait.mockRejectedValueOnce(new Error("Confirmation timed out"));

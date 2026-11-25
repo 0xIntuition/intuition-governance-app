@@ -272,6 +272,11 @@
   padding-block: 1.5rem;
   border-block-end: 1px solid hsl(var(--border));
 }
+/* The next section's top border already separates the last action. */
+.gov-detail section > .gov-action:last-child {
+  padding-block-end: 0;
+  border-block-end: 0;
+}
 .gov-action h3 {
   overflow-wrap: anywhere;
 }

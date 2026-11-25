@@ -1,10 +1,10 @@
 import Head from "next/head";
 import Link from "next/link";
 import { useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAccount, useWalletClient } from "wagmi";
 import { isAddressEqual, type Address, type Hex } from "viem";
-import { deployment } from "./deployment";
+import { deployment, importEnabled } from "./deployment";
 import { decodeStoredEvents } from "./events";
 import { decodeAction, fetchReceipt, governanceClient, governanceKey, verifyDeployment } from "./rpc";
 import { canPropose, makeProposalPlan, prepareProposal, type ProposalDraft, type ProposalPlan } from "./proposing";
@@ -69,6 +69,7 @@ export default function CreateProposalPage() {
     setError(undefined);
   };
 
+  const queryClient = useQueryClient();
   const confirm = async (transaction: SentProposal) => {
     let replaced = false;
     const receipt = await governanceClient.waitForTransactionReceipt({
@@ -108,6 +109,9 @@ export default function CreateProposalPage() {
       throw new Error("No proposal creation event was found. Check the transaction in the explorer.");
     // Use the mined event's ID, never the simulation result (ID includes time).
     setCreated(event.proposalId);
+    // The proposal list is read from chain, so the next visit must not reuse a list without it.
+    void queryClient.invalidateQueries({ queryKey: ["governance-proposal-ids"] });
+    if (!importEnabled) return;
     try {
       saveReceipt(window.localStorage, stored);
     } catch (e) {
