@@ -3,6 +3,7 @@ import {
   decodeFunctionData,
   encodeAbiParameters,
   fromHex,
+  getAbiItem,
   http,
   isAddressEqual,
   keccak256,
@@ -95,6 +96,15 @@ export function metadataReference(value: Hex) {
     return value;
   }
 }
+const ipfsGateway = "https://ipfs.io";
+
+// Opens https:// references directly and ipfs:// references through a public gateway.
+// Anything else is shown as plain text.
+export function metadataLink(reference: string) {
+  if (/^https:\/\/\S+$/.test(reference)) return reference;
+  const ipfs = /^ipfs:\/\/(\S+)$/.exec(reference);
+  return ipfs ? `${ipfsGateway}/ipfs/${ipfs[1]}` : undefined;
+}
 export async function readProposal(id: bigint, client: GovernanceClient = governanceClient) {
   if (id < 0n || id >= 2n ** 256n) throw new Error("Invalid proposal ID.");
   // The block number is cached for a few seconds, so proposals loaded together read the
@@ -139,6 +149,81 @@ export async function readProposal(id: bigint, client: GovernanceClient = govern
   };
 }
 export type Proposal = Awaited<ReturnType<typeof readProposal>>;
+
+const proposalCreated = getAbiItem({ abi: pluginAbi, name: "ProposalCreated" });
+// Upper bound on blocks sharing one timestamp; the RPC caps eth_getLogs at 2,000 blocks.
+const maxCreationRange = 1_000n;
+
+// Blocks read in parallel per search round. Blocks come only with traffic, so their times are
+// too uneven to estimate a block from a timestamp; reading several evenly spaced blocks at once
+// narrows the window ninefold per round, whatever the spacing.
+const probesPerRound = 8n;
+
+const blockTime = async (client: GovernanceClient, blockNumber: bigint) =>
+  (await client.getBlock({ blockNumber })).timestamp;
+
+// Narrows a window where block `low` is before `timestamp` and block `high`, with time
+// `highTime`, is at or after it. Returns the first block at or after it and its time.
+async function narrow(client: GovernanceClient, timestamp: bigint, low: bigint, high: bigint, highTime: bigint) {
+  while (high - low > 1n) {
+    const step = (high - low + probesPerRound) / (probesPerRound + 1n);
+    const probes: bigint[] = [];
+    for (let block = low + step; block < high && probes.length < probesPerRound; block += step) probes.push(block);
+    const times = await Promise.all(probes.map((block) => blockTime(client, block)));
+    const index = times.findIndex((time) => time >= timestamp);
+    if (index > 0) low = probes[index - 1];
+    if (index === -1) low = probes[probes.length - 1];
+    else [high, highTime] = [probes[index], times[index]];
+  }
+  return [high, highTime] as const;
+}
+
+// Finds who created a proposal without an indexer and without scanning from the deployment.
+// The plugin sets the snapshot to the creation block's timestamp minus one, so a binary search
+// over block timestamps finds the few blocks with that timestamp, and one eth_getLogs over
+// them, filtered on the indexed proposal ID, returns the creator. Any failure returns null and
+// the page shows no creator. Block numbers here are the RPC's own, never the L1 numbers that
+// contracts see.
+export async function readProposalCreator(
+  id: bigint,
+  snapshotTimestamp: bigint,
+  client: GovernanceClient = governanceClient
+): Promise<Address | null> {
+  try {
+    const created = snapshotTimestamp + 1n;
+    const head = await client.getBlockNumber();
+    const from = deployment.deploymentBlock;
+    const [fromTime, headTime] = await Promise.all([blockTime(client, from), blockTime(client, head)]);
+    if (headTime < created) return null;
+    const [first, firstTime] =
+      fromTime >= created ? [from, fromTime] : await narrow(client, created, from, head, headTime);
+    // No block has the creation timestamp: the snapshot does not belong to this deployment.
+    if (firstTime !== created) return null;
+    // Blocks sharing the creation timestamp sit right after the first one. One round reads
+    // blocks 1, 2, 4 … 512 after it to bracket the first later block, then narrows inside.
+    const offsets: bigint[] = [];
+    for (let offset = 1n; offset < maxCreationRange && first + offset <= head; offset *= 2n) offsets.push(offset);
+    const times = await Promise.all(offsets.map((offset) => blockTime(client, first + offset)));
+    const index = times.findIndex((time) => time > created);
+    const lastEqual = first + (index > 0 ? offsets[index - 1] : index === 0 ? 0n : (offsets.at(-1) ?? 0n));
+    let last = head;
+    if (index !== -1)
+      last = (await narrow(client, created + 1n, lastEqual, first + offsets[index], times[index]))[0] - 1n;
+    else if (headTime > created) last = (await narrow(client, created + 1n, lastEqual, head, headTime))[0] - 1n;
+    if (last - first >= maxCreationRange) return null;
+    const logs = await client.getLogs({
+      address: deployment.plugin,
+      event: proposalCreated,
+      args: { proposalId: id },
+      fromBlock: first,
+      toBlock: last,
+      strict: true,
+    });
+    return logs.length === 1 ? logs[0].args.creator : null;
+  } catch {
+    return null;
+  }
+}
 
 // The plugin's creation counter sits in the low 64 bits of each proposal ID and equals
 // its index in `proposalIds`, so it orders proposals by creation.

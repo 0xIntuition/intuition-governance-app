@@ -4,7 +4,7 @@ import { useRouter } from "next/router";
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAccount, useWalletClient } from "wagmi";
 import { formatUnits, isAddressEqual, type Address, type Hex } from "viem";
-import { deployment, fixtureTransactions } from "./deployment";
+import { deployment, fixtureTransactions, importEnabled } from "./deployment";
 import { pluginAbi, timelockAbi } from "./contracts";
 import { decodeStoredEvents, type StoredReceipt } from "./events";
 import { clearReceipts, loadReceipts, removeReceipt, saveReceipt } from "./storage";
@@ -14,10 +14,12 @@ import {
   governanceClient,
   governanceKey,
   mergeProposalIds,
+  metadataLink,
   metadataReference,
   nextProposalIdPage,
   proposalIndex,
   readProposal,
+  readProposalCreator,
   readProposalIdPage,
   readVotingPower,
   verifyDeployment,
@@ -47,6 +49,8 @@ export default function GovernanceScreen() {
     staleTime: 60_000,
   });
   const reloadLocal = useCallback(() => {
+    // With import off, browser-local history is neither read nor shown.
+    if (!importEnabled) return setReady(true);
     try {
       const loaded = loadReceipts(window.localStorage);
       setReceipts(loaded.receipts);
@@ -64,7 +68,7 @@ export default function GovernanceScreen() {
   const hashes = useMemo(() => receipts.map((r) => r.transactionHash).sort(), [receipts]);
   const history = useQuery({
     queryKey: ["governance-history", ...governanceKey, hashes],
-    enabled: ready && deploymentQuery.isSuccess,
+    enabled: importEnabled && ready && deploymentQuery.isSuccess,
     queryFn: async () => {
       const verified: StoredReceipt[] = [];
       const errors: string[] = [];
@@ -196,6 +200,7 @@ export default function GovernanceScreen() {
     void importHashes([input]);
   };
   const onConfirmed = async (hash: Hex) => {
+    if (!importEnabled) return;
     // Confirmed writes must not be dropped when a manual refresh holds the UI lock.
     try {
       const receipt = await fetchReceipt(hash);
@@ -247,56 +252,58 @@ export default function GovernanceScreen() {
           </>
         ) : (
           <>
-            <section className="app-surface gov-import" aria-labelledby="import-title">
-              <h2 id="import-title">Import a transaction</h2>
-              <p>
-                Paste a transaction hash to load its governance events, such as the creator, vetoes and execution.
-                History is saved only in this browser.
-              </p>
-              <form onSubmit={onSubmit}>
-                <label htmlFor="transaction-hash">Transaction hash</label>
-                <div className="gov-input-row">
-                  <input
-                    id="transaction-hash"
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    placeholder="0x…"
-                    autoComplete="off"
-                    spellCheck={false}
-                    aria-describedby="import-help"
-                    disabled={busy}
-                  />
+            {importEnabled && (
+              <section className="app-surface gov-import" aria-labelledby="import-title">
+                <h2 id="import-title">Import a transaction</h2>
+                <p>
+                  Paste a transaction hash to load its governance events, such as the creator, vetoes and execution.
+                  History is saved only in this browser.
+                </p>
+                <form onSubmit={onSubmit}>
+                  <label htmlFor="transaction-hash">Transaction hash</label>
+                  <div className="gov-input-row">
+                    <input
+                      id="transaction-hash"
+                      value={input}
+                      onChange={(e) => setInput(e.target.value)}
+                      placeholder="0x…"
+                      autoComplete="off"
+                      spellCheck={false}
+                      aria-describedby="import-help"
+                      disabled={busy}
+                    />
+                    <button
+                      className="gov-primary"
+                      type="submit"
+                      disabled={busy || !input.trim() || !deploymentQuery.isSuccess}
+                      aria-busy={busy}
+                    >
+                      Import transaction
+                    </button>
+                  </div>
+                </form>
+                <p id="import-help">
+                  Only receipts from this deployment are accepted. Importing does not ask your wallet to sign.
+                </p>
+                {fixtureTransactions.length > 0 && (
                   <button
-                    className="gov-primary"
-                    type="submit"
-                    disabled={busy || !input.trim() || !deploymentQuery.isSuccess}
-                    aria-busy={busy}
+                    disabled={busy || !deploymentQuery.isSuccess}
+                    onClick={() => void importHashes(fixtureTransactions)}
                   >
-                    Import transaction
+                    Import testnet fixtures
                   </button>
-                </div>
-              </form>
-              <p id="import-help">
-                Only receipts from this deployment are accepted. Importing does not ask your wallet to sign.
-              </p>
-              {fixtureTransactions.length > 0 && (
-                <button
-                  disabled={busy || !deploymentQuery.isSuccess}
-                  onClick={() => void importHashes(fixtureTransactions)}
-                >
-                  Import testnet fixtures
-                </button>
-              )}
-              <ErrorMessage error={importError} />
-              <p role="status" aria-live="polite">
-                {busy ? "Working with the RPC…" : notice}
-              </p>
-            </section>
+                )}
+                <ErrorMessage error={importError} />
+                <p role="status" aria-live="polite">
+                  {busy ? "Working with the RPC…" : notice}
+                </p>
+              </section>
+            )}
             <section className="gov-proposals" aria-labelledby="proposals-title">
               <h2 id="proposals-title">Proposals</h2>
               <p>
-                The list, veto totals and status come from the contracts. Event history comes only from transactions
-                imported into this browser.
+                The list, veto totals and status come from the contracts.
+                {importEnabled && " Event history comes only from transactions imported into this browser."}
               </p>
               {!ready || listing.isFetching || history.isFetching || list.isFetching ? (
                 <p role="status">Loading and verifying proposal data…</p>
@@ -327,11 +334,11 @@ export default function GovernanceScreen() {
                         </a>
                         <p>
                           {row?.proposal
-                            ? `${row.proposal.result[5].length} onchain action${row.proposal.result[5].length === 1 ? "" : "s"} · Metadata unavailable`
+                            ? `${row.proposal.result[5].length} onchain action${row.proposal.result[5].length === 1 ? "" : "s"}`
                             : row?.error || "Loading current state…"}
                         </p>
                       </div>
-                      <span className="gov-status">{row?.proposal?.status ?? "Unavailable"}</span>
+                      {row?.proposal && <span className="gov-status">{row.proposal.status}</span>}
                     </div>
                   );
                 })}
@@ -368,7 +375,7 @@ export default function GovernanceScreen() {
           </p>
         ))}
         <ErrorMessage error={history.error} />
-        {(receipts.length > 0 || warnings.length > 0) && (
+        {importEnabled && (receipts.length > 0 || warnings.length > 0) && (
           <details className="gov-history">
             <summary>Manage local history ({receipts.length} transactions)</summary>
             <p>Removing an import only changes this browser. Keep its hash to import it again.</p>
@@ -417,7 +424,9 @@ export default function GovernanceScreen() {
         )}
       </main>
       <footer className="gov-footer">
-        <p>{deployment.name}. Imported event history is stored only in this browser.</p>
+        <p>
+          {deployment.name}.{importEnabled && " Imported event history is stored only in this browser."}
+        </p>
         <a
           href="https://github.com/0xIntuition/intuition-contracts-v2-governance"
           target="_blank"
@@ -443,6 +452,17 @@ function ProposalDetail({
   onConfirmed: (hash: Hex) => Promise<void>;
 }) {
   const proposal = useQuery({ queryKey: proposalKey(id), queryFn: () => readProposal(BigInt(id)), enabled });
+  const snapshot = proposal.data?.result[2].snapshotTimestamp;
+  // A found creator never changes, so it is kept for the page session. A failed lookup is
+  // retried every minute while the page is open, so a brief RPC outage does not hide it for good.
+  const creatorQuery = useQuery({
+    queryKey: ["governance-creator", ...governanceKey, id],
+    queryFn: () => readProposalCreator(BigInt(id), snapshot!),
+    enabled: enabled && snapshot !== undefined,
+    staleTime: (query) => (query.state.data ? Infinity : 60_000),
+    refetchInterval: (query) => (query.state.data ? false : 60_000),
+    retry: false,
+  });
   const { address, chainId } = useAccount();
   const { data: wallet } = useWalletClient();
   const voting = useQuery({
@@ -522,7 +542,9 @@ function ProposalDetail({
   if (proposal.isPending) return <p role="status">Loading proposal from the RPC…</p>;
   if (!proposal.data) return <ErrorMessage error={proposal.error} />;
   const p = proposal.data;
-  const creator = events.find((e) => e.name === "ProposalCreated" && e.proposalId === id);
+  const creator =
+    creatorQuery.data ??
+    (events.find((e) => e.name === "ProposalCreated" && e.proposalId === id)?.creator as Address | undefined);
   const ownEvents = events.filter((e) => e.proposalId === id);
   const reference = metadataReference(p.result[4]);
   const writable =
@@ -536,18 +558,16 @@ function ProposalDetail({
       <p className="gov-hash">{id}</p>
       <ErrorMessage error={proposal.error} />
       <dl className="gov-facts">
-        <dt>Proposed by</dt>
-        <dd>
-          {creator?.creator ? (
-            <Explorer value={creator.creator}>
-              {isAddressEqual(creator.creator as Address, deployment.manager)
-                ? `Manager (${deployment.managerLabel})`
-                : short(creator.creator)}
-            </Explorer>
-          ) : (
-            "Creation receipt not imported"
-          )}
-        </dd>
+        {creator && (
+          <>
+            <dt>Proposed by</dt>
+            <dd>
+              <Explorer value={creator}>
+                {isAddressEqual(creator, deployment.manager) ? `Manager (${deployment.managerLabel})` : short(creator)}
+              </Explorer>
+            </dd>
+          </>
+        )}
         <dt>Veto window ends</dt>
         <dd>{date(p.result[2].vetoEndDate)}</dd>
         <dt>Voting snapshot</dt>
@@ -565,16 +585,20 @@ function ProposalDetail({
           Block {p.blockNumber.toString()} · {date(p.blockTimestamp)}
         </dd>
       </dl>
-      <section>
-        <h2>Proposal description</h2>
-        <p>Metadata unavailable. The actions below come directly from the contract.</p>
-        {reference && (
-          <details>
-            <summary>Metadata reference</summary>
-            <p className="gov-hash">{reference}</p>
-          </details>
-        )}
-      </section>
+      {reference && (
+        <section>
+          <h2>Proposal description</h2>
+          <p className="gov-hash">
+            {metadataLink(reference) ? (
+              <a href={metadataLink(reference)} target="_blank" rel="noopener noreferrer">
+                {reference}
+              </a>
+            ) : (
+              reference
+            )}
+          </p>
+        </section>
+      )}
       <section>
         <h2>Onchain actions</h2>
         <p>Execution runs these calls through the DAO. Review every target, value and calldata before executing.</p>
@@ -686,31 +710,33 @@ function ProposalDetail({
         )}
         <ErrorMessage error={error} />
       </section>
-      <section>
-        <h2>Imported activity</h2>
-        <p>This is only the activity imported into this browser, not a complete voter list.</p>
-        {ownEvents.length ? (
-          ownEvents.map((event) => (
-            <div className="gov-row" key={`${event.transactionHash}:${event.logIndex}`}>
-              <div>
-                {event.name === "ProposalCreated"
-                  ? "Proposal created"
-                  : event.name === "ProposalExecuted"
-                    ? "Proposal executed"
-                    : "Veto cast"}
-                {event.voter && (
-                  <p>
-                    <Explorer value={event.voter} /> · {units(event.votingPower ?? 0n)} veTRUST
-                  </p>
-                )}
+      {importEnabled && (
+        <section>
+          <h2>Imported activity</h2>
+          <p>This is only the activity imported into this browser, not a complete voter list.</p>
+          {ownEvents.length ? (
+            ownEvents.map((event) => (
+              <div className="gov-row" key={`${event.transactionHash}:${event.logIndex}`}>
+                <div>
+                  {event.name === "ProposalCreated"
+                    ? "Proposal created"
+                    : event.name === "ProposalExecuted"
+                      ? "Proposal executed"
+                      : "Veto cast"}
+                  {event.voter && (
+                    <p>
+                      <Explorer value={event.voter} /> · {units(event.votingPower ?? 0n)} veTRUST
+                    </p>
+                  )}
+                </div>
+                <Explorer value={event.transactionHash} kind="tx" />
               </div>
-              <Explorer value={event.transactionHash} kind="tx" />
-            </div>
-          ))
-        ) : (
-          <p>No activity receipts imported for this proposal.</p>
-        )}
-      </section>
+            ))
+          ) : (
+            <p>No activity receipts imported for this proposal.</p>
+          )}
+        </section>
+      )}
     </article>
   );
 }
@@ -781,7 +807,9 @@ function ActionView({
           <ErrorMessage error={operation.error} />
           <p>
             {eta === undefined
-              ? "Timelock status unavailable."
+              ? operation.isPending
+                ? "Reading timelock status…"
+                : null
               : eta === 0n
                 ? "Not currently scheduled. This alone does not prove whether the operation was cancelled."
                 : eta === 1n

@@ -36,7 +36,7 @@ pnpm --filter dao-ui dev
 
 No environment file is required. `NEXT_PUBLIC_RPC_URL` optionally replaces the public RPC with another endpoint for chain 13579. `NEXT_PUBLIC_WALLET_CONNECT_PROJECT_ID` enables WalletConnect; injected wallets work without it. Public environment values are shipped to the browser; do not put private credentials there.
 
-Select **Import testnet fixtures** to fetch and validate seven receipts: four creations, two vetoes and one execution. Import never sends transactions. The transactions are pinned in `packages/ui/src/governance/deployment.ts`; the receipt logs used by unit tests are in its adjacent `__tests__/fixtures` directory.
+With `NEXT_PUBLIC_GOVERNANCE_IMPORT=true`, select **Import testnet fixtures** to fetch and validate seven receipts: four creations, two vetoes and one execution. Import never sends transactions. The transactions are pinned in `packages/ui/src/governance/deployment.ts`; the receipt logs used by unit tests are in its adjacent `__tests__/fixtures` directory.
 
 | Fixture | Proposal ID | Read-only check on 2026-11-04 |
 | --- | --- | --- |
@@ -91,7 +91,7 @@ No deployment-to-head scans, indexer, external ABI lookup, metadata download, se
 
 Local history is partial, browser-specific and origin-specific. A second browser or changed hosting origin starts empty. Clearing site data removes it. Keep transaction hashes for recovery. RPC verification establishes current inclusion, not irreversible finality.
 
-Fixtures A–C refer to unpinned IPFS metadata; D has empty metadata. The interface deliberately shows unavailable descriptions and the onchain reference. RPC cannot reconstruct documents that were never published. Action bytes and current contract reads remain available.
+Fixtures A–C refer to unpinned IPFS metadata; D has empty metadata. The interface shows the onchain reference, linked when it is an `ipfs://` or `https://` URI, and nothing when it is empty. RPC cannot reconstruct documents that were never published. Action bytes and current contract reads remain available.
 
 This slice supports only the supplied testnet deployment. Mainnet/anvil selection, manager/Safe export, rich metadata preparation and publishing, broader ABI decoding, full timelock evidence presentation, public hosting and legacy dependency cleanup remain in the project backlog. The manager EOA here must not be represented as a Safe. Legacy builder code is retained for subsequent reuse but is not routed into this interface.
 
